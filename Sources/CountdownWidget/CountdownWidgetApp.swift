@@ -389,7 +389,7 @@ struct ContentView: View {
             .padding(.bottom, Space.m)
         }
         .frame(width: 268)
-        .background(Surface.sidebar)
+        .background(SidebarSurface())
     }
 
     private var settingsSidebar: some View {

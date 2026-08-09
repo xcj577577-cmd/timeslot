@@ -92,7 +92,24 @@ enum Surface {
     static let track = Color.primary.opacity(0.11)
     static let gridLine = Color.primary.opacity(0.07)  // 图表网格线
     static let border = Color.primary.opacity(0.10)
-    static let sidebar = Color(nsColor: .underPageBackgroundColor).opacity(0.88)
+}
+
+/// 侧栏和窗口画布只做轻微明度分层。
+/// `underPageBackgroundColor` 在浅色 Aqua 下是中灰色，适合页面背后的衬底，
+/// 不适合作为常驻侧栏；强制从深色切回浅色时会显得像外观没有刷新。
+struct SidebarSurface: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Surface.canvas
+            .overlay {
+                if colorScheme == .dark {
+                    Color.white.opacity(0.025)
+                } else {
+                    Color.black.opacity(0.032)
+                }
+            }
+    }
 }
 
 enum Radius {
