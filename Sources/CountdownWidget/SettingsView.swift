@@ -6,6 +6,9 @@ struct AppSettingsPage: View {
     @ObservedObject var store: CountdownStore
     @State private var showingPomodoroSettings = false
     @State private var showingClearHistoryConfirmation = false
+    @State private var pendingImport: BackupPayload?
+    @State private var showingImportConfirmation = false
+    @State private var operationError: String?
 
     private var accent: Color { store.accentPreset.color }
 
@@ -84,6 +87,8 @@ struct AppSettingsPage: View {
                             .buttonStyle(TimeSlotPressableStyle())
                             .contentShape(Rectangle())
                             .help(preset.title)
+                            .accessibilityLabel(preset.title)
+                            .accessibilityValue(store.accentPreset == preset ? "已选中" : "未选中")
                         }
                         Spacer(minLength: 0)
                     }
@@ -122,10 +127,30 @@ struct AppSettingsPage: View {
 
                     Divider()
 
-                    Text("偏好会立即同步到桌面小组件，最长 1 分钟自动刷新一次。")
-                        .font(AppType.caption())
-                        .foregroundStyle(.secondary)
-                        .lineSpacing(2)
+                    HStack(spacing: Space.m) {
+                        Image(systemName: widgetSyncInfo.icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(widgetSyncInfo.color)
+                            .frame(width: 24, height: 24)
+                            .background(
+                                widgetSyncInfo.color.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(widgetSyncInfo.title)
+                                .font(AppType.ui(Typo.footnote, .medium))
+                            Text(widgetSyncInfo.subtitle)
+                                .font(AppType.caption())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: Space.m)
+                        Button("立即刷新") {
+                            store.refreshDesktopWidgets()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
 
                 settingsCard(title: "番茄钟节奏", icon: "timer") {
@@ -155,6 +180,20 @@ struct AppSettingsPage: View {
                         }
                         .buttonStyle(.bordered)
                     }
+
+                    Divider()
+
+                    HStack(spacing: Space.m) {
+                        settingLabel(
+                            title: "备份与恢复",
+                            subtitle: "导出全部本地数据；导入前会自动保存一份当前数据"
+                        )
+                        Spacer(minLength: Space.m)
+                        Button("导出…") { exportBackup() }
+                            .buttonStyle(.bordered)
+                        Button("导入…") { chooseImportBackup() }
+                            .buttonStyle(.bordered)
+                    }
                 }
 
                 settingsCard(title: "关于", icon: "info.circle") {
@@ -164,7 +203,7 @@ struct AppSettingsPage: View {
                             subtitle: appVersionText
                         )
                         Spacer()
-                        Text("非 App Store 版本")
+                        Text("本地数据 · 无账户")
                             .font(AppType.caption(weight: .medium))
                             .foregroundStyle(.secondary)
                     }
@@ -196,6 +235,35 @@ struct AppSettingsPage: View {
         } message: {
             Text("这会删除所有番茄钟和正计时历史记录，且无法撤销。当前计时和任务不会受影响。")
                 .lineSpacing(2.5)
+        }
+        .alert(
+            "导入备份？",
+            isPresented: $showingImportConfirmation,
+            presenting: pendingImport
+        ) { payload in
+            Button("导入并覆盖当前数据", role: .destructive) {
+                do {
+                    try store.applyBackup(payload)
+                } catch {
+                    operationError = error.localizedDescription
+                }
+                pendingImport = nil
+            }
+            Button("取消", role: .cancel) { pendingImport = nil }
+        } message: { payload in
+            Text("将导入 \(payload.items.count) 个倒计时、\(payload.history.count) 条阶段记录。当前数据会先自动备份，再被替换。")
+                .lineSpacing(2.5)
+        }
+        .alert(
+            "无法完成操作",
+            isPresented: Binding(
+                get: { operationError != nil },
+                set: { if !$0 { operationError = nil } }
+            )
+        ) {
+            Button("好", role: .cancel) { operationError = nil }
+        } message: {
+            Text(operationError ?? "未知错误")
         }
     }
 
@@ -319,8 +387,44 @@ struct AppSettingsPage: View {
         return "\(state.focusMinutes) 分钟专注 · \(state.shortBreakMinutes) 分钟短休息 · 每 \(state.roundsBeforeLongBreak) 轮进入 \(state.longBreakMinutes) 分钟长休息 · 周目标 \(max(1, state.weeklyFocusGoalMinutes / 60)) 小时"
     }
 
+    private var widgetSyncInfo: (title: String, subtitle: String, icon: String, color: Color) {
+        switch store.widgetSyncState {
+        case .checking:
+            return ("正在检查共享空间", "稍后会自动完成第一次同步", "arrow.triangle.2.circlepath", .secondary)
+        case .ready(let date):
+            let time = beijingDateString(date, dateStyle: .omitted, timeStyle: .shortened)
+            return ("小组件同步正常", "最近同步于 \(time)", "checkmark.circle.fill", accent)
+        case .unavailable:
+            return ("共享空间不可用", "请重新安装当前版本以恢复小组件权限", "exclamationmark.triangle.fill", .orange)
+        case .failed(let message):
+            return ("小组件同步失败", message, "exclamationmark.circle.fill", .red)
+        }
+    }
+
+    private func exportBackup() {
+        guard let data = store.exportBackup() else {
+            operationError = "当前数据无法编码为备份。"
+            return
+        }
+        do {
+            _ = try BackupFileService.export(data)
+        } catch {
+            operationError = error.localizedDescription
+        }
+    }
+
+    private func chooseImportBackup() {
+        do {
+            guard let data = try BackupFileService.chooseImportData() else { return }
+            pendingImport = try CountdownStore.decodeBackup(data)
+            showingImportConfirmation = true
+        } catch {
+            operationError = error.localizedDescription
+        }
+    }
+
     private var appVersionText: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         return "版本 \(version) (\(build))"
     }

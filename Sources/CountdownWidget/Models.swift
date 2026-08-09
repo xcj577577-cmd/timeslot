@@ -1,5 +1,53 @@
 import Foundation
 
+/// Hex 颜色的唯一解析入口。数据文件和备份都可能被手动修改，任何非法值都必须
+/// 回落到品牌色，不能让主应用与小组件各自解析出不同结果。
+enum ColorHex {
+    static let fallback = "#2C8C7C"
+
+    static func isValid(_ value: String) -> Bool {
+        rgba(from: value) != nil
+    }
+
+    static func normalized(_ value: String, fallback: String = ColorHex.fallback) -> String {
+        guard let rgba = rgba(from: value) else { return fallback }
+        let red = Int((rgba.red * 255).rounded())
+        let green = Int((rgba.green * 255).rounded())
+        let blue = Int((rgba.blue * 255).rounded())
+        if rgba.alpha < 0.999 {
+            let alpha = Int((rgba.alpha * 255).rounded())
+            return String(format: "#%02X%02X%02X%02X", red, green, blue, alpha)
+        }
+        return String(format: "#%02X%02X%02X", red, green, blue)
+    }
+
+    static func rgba(from value: String) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat)? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digits = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        let validDigits = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        guard digits.count == 6 || digits.count == 8,
+              digits.unicodeScalars.allSatisfy(validDigits.contains) else {
+            return nil
+        }
+        var raw: UInt64 = 0
+        guard Scanner(string: digits).scanHexInt64(&raw) else { return nil }
+        if digits.count == 6 {
+            return (
+                CGFloat((raw >> 16) & 0xFF) / 255,
+                CGFloat((raw >> 8) & 0xFF) / 255,
+                CGFloat(raw & 0xFF) / 255,
+                1
+            )
+        }
+        return (
+            CGFloat((raw >> 24) & 0xFF) / 255,
+            CGFloat((raw >> 16) & 0xFF) / 255,
+            CGFloat((raw >> 8) & 0xFF) / 255,
+            CGFloat(raw & 0xFF) / 255
+        )
+    }
+}
+
 struct CountdownItem: Identifiable, Codable, Equatable {
     let id: UUID
     var title: String
@@ -12,9 +60,9 @@ struct CountdownItem: Identifiable, Codable, Equatable {
 
     init(id: UUID = UUID(), title: String, targetDate: Date, colorHex: String = "#2C8C7C", isPinned: Bool = false) {
         self.id = id
-        self.title = title
+        self.title = Self.normalizedTitle(title)
         self.targetDate = targetDate
-        self.colorHex = colorHex
+        self.colorHex = ColorHex.normalized(colorHex)
         self.isPinned = isPinned
         self.createdAt = Date()
         self.totalDuration = max(1, targetDate.timeIntervalSince(createdAt))
@@ -36,14 +84,43 @@ struct CountdownItem: Identifiable, Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        title = try container.decode(String.self, forKey: .title)
+        title = Self.normalizedTitle(try container.decode(String.self, forKey: .title))
         targetDate = try container.decode(Date.self, forKey: .targetDate)
-        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "#2C8C7C"
+        colorHex = ColorHex.normalized(
+            try container.decodeIfPresent(String.self, forKey: .colorHex) ?? ColorHex.fallback
+        )
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
-        totalDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .totalDuration)
-            ?? max(1, targetDate.timeIntervalSince(createdAt))
-        pausedRemaining = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
+        let decodedDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .totalDuration)
+        totalDuration = decodedDuration?.isFinite == true
+            ? max(1, decodedDuration ?? 1)
+            : max(1, targetDate.timeIntervalSince(createdAt))
+        let decodedPaused = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
+        pausedRemaining = decodedPaused?.isFinite == true ? max(0, decodedPaused ?? 0) : nil
+    }
+
+    static func normalizedTitle(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String((trimmed.isEmpty ? "未命名倒计时" : trimmed).prefix(80))
+    }
+}
+
+/// 区分“从未保存”“明确保存为空”和“存档损坏”。空数组是合法用户状态，
+/// 绝不能和首次启动混为一谈，否则用户删完后下次启动会重新出现示例数据。
+enum CountdownItemsStorageResolution: Equatable {
+    case missing
+    case decoded([CountdownItem])
+    case corrupted
+}
+
+enum CountdownItemsStoragePolicy {
+    static func resolve(_ data: Data?) -> CountdownItemsStorageResolution {
+        guard let data else { return .missing }
+        do {
+            return .decoded(try JSONDecoder().decode([CountdownItem].self, from: data))
+        } catch {
+            return .corrupted
+        }
     }
 }
 
@@ -52,6 +129,21 @@ struct CountdownItem: Identifiable, Codable, Equatable {
 enum CountdownNotificationPolicy {
     static func shouldSchedule(item: CountdownItem, at date: Date) -> Bool {
         item.pausedRemaining == nil && item.remaining(at: date) > 0
+    }
+}
+
+/// 时隙只管理自己的通知标识；清理旧请求时不能误删其他应用或未来系统请求。
+enum TimeSlotNotificationIdentifier {
+    static let pomodoroPhaseEnd = "pomodoro.phase.end"
+
+    static func countdownCompletion(for id: UUID) -> String {
+        "countdown.completion.\(id.uuidString)"
+    }
+
+    static func isManaged(_ identifier: String) -> Bool {
+        identifier == pomodoroPhaseEnd
+            || identifier.hasPrefix("pomodoro.phase.end.")
+            || identifier.hasPrefix("countdown.completion.")
     }
 }
 
@@ -194,9 +286,9 @@ struct PomodoroTask: Identifiable, Codable, Equatable {
 
     init(id: UUID = UUID(), title: String, createdAt: Date = Date(), colorHex: String = "") {
         self.id = id
-        self.title = title
+        self.title = String(PomodoroTaskPalette.normalized(title).prefix(40))
         self.createdAt = createdAt
-        self.colorHex = colorHex
+        self.colorHex = colorHex.isEmpty ? "" : ColorHex.normalized(colorHex)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -206,9 +298,10 @@ struct PomodoroTask: Identifiable, Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        title = try container.decode(String.self, forKey: .title)
+        title = String(PomodoroTaskPalette.normalized(try container.decode(String.self, forKey: .title)).prefix(40))
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
-        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? ""
+        let decodedColor = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? ""
+        colorHex = decodedColor.isEmpty ? "" : ColorHex.normalized(decodedColor)
     }
 }
 
@@ -275,31 +368,73 @@ struct PomodoroState: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        taskTitle = try container.decodeIfPresent(String.self, forKey: .taskTitle) ?? "专注当前任务"
+        taskTitle = String(PomodoroTaskPalette.normalized(
+            try container.decodeIfPresent(String.self, forKey: .taskTitle) ?? "专注当前任务"
+        ).prefix(40))
         phase = try container.decodeIfPresent(PomodoroPhase.self, forKey: .phase) ?? .focus
-        focusMinutes = try container.decodeIfPresent(Int.self, forKey: .focusMinutes) ?? 25
-        shortBreakMinutes = try container.decodeIfPresent(Int.self, forKey: .shortBreakMinutes) ?? 5
-        longBreakMinutes = try container.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 15
         // 防御性钳制：备份/旧数据里可能出现 0 或负值，
         // % roundsBeforeLongBreak 会除零崩溃，0..<负数 的 ForEach 同样会 trap。
         roundsBeforeLongBreak = min(8, max(2, try container.decodeIfPresent(Int.self, forKey: .roundsBeforeLongBreak) ?? 4))
-        focusMinutes = min(180, max(1, try container.decodeIfPresent(Int.self, forKey: .focusMinutes) ?? 25))
-        shortBreakMinutes = min(60, max(1, try container.decodeIfPresent(Int.self, forKey: .shortBreakMinutes) ?? 5))
-        longBreakMinutes = min(120, max(1, try container.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 15))
-        weeklyFocusGoalMinutes = try container.decodeIfPresent(Int.self, forKey: .weeklyFocusGoalMinutes)
-            ?? 10 * 60
-        completedFocusSessions = try container.decodeIfPresent(Int.self, forKey: .completedFocusSessions) ?? 0
+        focusMinutes = min(120, max(1, try container.decodeIfPresent(Int.self, forKey: .focusMinutes) ?? 25))
+        shortBreakMinutes = min(30, max(1, try container.decodeIfPresent(Int.self, forKey: .shortBreakMinutes) ?? 5))
+        longBreakMinutes = min(60, max(1, try container.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 15))
+        weeklyFocusGoalMinutes = min(
+            168 * 60,
+            max(60, try container.decodeIfPresent(Int.self, forKey: .weeklyFocusGoalMinutes) ?? 10 * 60)
+        )
+        completedFocusSessions = max(0, try container.decodeIfPresent(Int.self, forKey: .completedFocusSessions) ?? 0)
         isRunning = try container.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false
         endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
-        pausedRemaining = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
+        let decodedPaused = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
             ?? TimeInterval(focusMinutes * 60)
+        pausedRemaining = decodedPaused.isFinite ? decodedPaused : TimeInterval(focusMinutes * 60)
         sessionStartedAt = try container.decodeIfPresent(Date.self, forKey: .sessionStartedAt)
         activeStartedAt = try container.decodeIfPresent(Date.self, forKey: .activeStartedAt)
-        accumulatedElapsed = try container.decodeIfPresent(TimeInterval.self, forKey: .accumulatedElapsed) ?? 0
+        let decodedAccumulated = try container.decodeIfPresent(TimeInterval.self, forKey: .accumulatedElapsed) ?? 0
+        accumulatedElapsed = decodedAccumulated.isFinite ? decodedAccumulated : 0
         stopwatchRunning = try container.decodeIfPresent(Bool.self, forKey: .stopwatchRunning) ?? false
         stopwatchSessionStartedAt = try container.decodeIfPresent(Date.self, forKey: .stopwatchSessionStartedAt)
         stopwatchActiveStartedAt = try container.decodeIfPresent(Date.self, forKey: .stopwatchActiveStartedAt)
-        stopwatchAccumulated = try container.decodeIfPresent(TimeInterval.self, forKey: .stopwatchAccumulated) ?? 0
+        let decodedStopwatch = try container.decodeIfPresent(TimeInterval.self, forKey: .stopwatchAccumulated) ?? 0
+        stopwatchAccumulated = decodedStopwatch.isFinite ? decodedStopwatch : 0
+        normalizeForRuntime()
+    }
+
+    mutating func normalizeForRuntime() {
+        focusMinutes = min(120, max(1, focusMinutes))
+        shortBreakMinutes = min(30, max(1, shortBreakMinutes))
+        longBreakMinutes = min(60, max(1, longBreakMinutes))
+        roundsBeforeLongBreak = min(8, max(2, roundsBeforeLongBreak))
+        weeklyFocusGoalMinutes = min(168 * 60, max(60, weeklyFocusGoalMinutes))
+        completedFocusSessions = max(0, completedFocusSessions)
+        taskTitle = String(PomodoroTaskPalette.normalized(taskTitle).prefix(40))
+
+        let phaseDuration = duration(for: phase)
+        pausedRemaining = min(phaseDuration, max(0, pausedRemaining.isFinite ? pausedRemaining : phaseDuration))
+        accumulatedElapsed = min(phaseDuration, max(0, accumulatedElapsed.isFinite ? accumulatedElapsed : 0))
+        stopwatchAccumulated = max(0, stopwatchAccumulated.isFinite ? stopwatchAccumulated : 0)
+
+        if isRunning, endDate == nil {
+            isRunning = false
+            activeStartedAt = nil
+        }
+        if stopwatchRunning, stopwatchActiveStartedAt == nil {
+            stopwatchRunning = false
+        }
+        if isRunning, isStopwatchActive {
+            if stopwatchRunning {
+                isRunning = false
+                endDate = nil
+                sessionStartedAt = nil
+                activeStartedAt = nil
+                accumulatedElapsed = 0
+                pausedRemaining = phaseDuration
+            } else {
+                stopwatchSessionStartedAt = nil
+                stopwatchActiveStartedAt = nil
+                stopwatchAccumulated = 0
+            }
+        }
     }
 
     func duration(for phase: PomodoroPhase) -> TimeInterval {
@@ -354,6 +489,13 @@ enum TimeBookSection: String, CaseIterable {
     case settings
 }
 
+enum WidgetSyncState: Equatable {
+    case checking
+    case ready(Date)
+    case unavailable
+    case failed(String)
+}
+
 /// 桌面小组件显示什么。原来只有二选一，现在多一个「两者」同时显示。
 /// 原始值要和小组件扩展里读取的字符串保持一致。
 enum WidgetDisplayMode: String, CaseIterable, Identifiable {
@@ -398,7 +540,9 @@ enum PomodoroTimerMode: String, CaseIterable, Identifiable {
 
 /// 完整数据备份（导出/恢复用）。schemaVersion 预留给未来迁移。
 struct BackupPayload: Codable {
-    var schemaVersion: Int = 1
+    static let currentSchemaVersion = 1
+
+    let schemaVersion: Int
     let items: [CountdownItem]
     let pomodoro: PomodoroState
     let history: [PomodoroSessionRecord]
@@ -406,4 +550,90 @@ struct BackupPayload: Codable {
     let displayMode: String
     let timeUnit: String
     let exportedAt: Date
+
+    init(
+        schemaVersion: Int = Self.currentSchemaVersion,
+        items: [CountdownItem],
+        pomodoro: PomodoroState,
+        history: [PomodoroSessionRecord],
+        tasks: [PomodoroTask],
+        displayMode: String,
+        timeUnit: String,
+        exportedAt: Date
+    ) {
+        self.schemaVersion = schemaVersion
+        self.items = items
+        self.pomodoro = pomodoro
+        self.history = history
+        self.tasks = tasks
+        self.displayMode = displayMode
+        self.timeUnit = timeUnit
+        self.exportedAt = exportedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion, items, pomodoro, history, tasks, displayMode, timeUnit, exportedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        items = try container.decode([CountdownItem].self, forKey: .items)
+        pomodoro = try container.decode(PomodoroState.self, forKey: .pomodoro)
+        history = try container.decodeIfPresent([PomodoroSessionRecord].self, forKey: .history) ?? []
+        tasks = try container.decodeIfPresent([PomodoroTask].self, forKey: .tasks) ?? []
+        displayMode = try container.decodeIfPresent(String.self, forKey: .displayMode) ?? "both"
+        timeUnit = try container.decodeIfPresent(String.self, forKey: .timeUnit) ?? "auto"
+        exportedAt = try container.decodeIfPresent(Date.self, forKey: .exportedAt) ?? Date()
+    }
+}
+
+enum BackupValidationError: LocalizedError, Equatable {
+    case fileTooLarge
+    case unsupportedSchema(Int)
+    case tooManyItems
+    case tooManyRecords
+    case tooManyTasks
+
+    var errorDescription: String? {
+        switch self {
+        case .fileTooLarge: return "备份文件过大，无法安全导入。"
+        case .unsupportedSchema(let version):
+            if version > BackupPayload.currentSchemaVersion {
+                return "这个备份来自更高版本（格式 \(version)），请先更新时隙。"
+            }
+            return "无法识别这个备份的格式（格式 \(version)）。"
+        case .tooManyItems: return "备份中的倒计时数量异常。"
+        case .tooManyRecords: return "备份中的阶段记录数量异常。"
+        case .tooManyTasks: return "备份中的任务数量异常。"
+        }
+    }
+}
+
+enum BackupOperationError: LocalizedError {
+    case cannotEncodeCurrentData
+
+    var errorDescription: String? {
+        switch self {
+        case .cannotEncodeCurrentData:
+            return "无法创建导入前的安全备份，当前数据没有被更改。"
+        }
+    }
+}
+
+enum BackupValidationPolicy {
+    static let maximumFileSize = 20 * 1_024 * 1_024
+    static let maximumItems = 5_000
+    static let maximumHistoryRecords = 50_000
+    static let maximumTasks = 1_000
+
+    static func validate(dataSize: Int, payload: BackupPayload) throws {
+        guard dataSize <= maximumFileSize else { throw BackupValidationError.fileTooLarge }
+        guard (1...BackupPayload.currentSchemaVersion).contains(payload.schemaVersion) else {
+            throw BackupValidationError.unsupportedSchema(payload.schemaVersion)
+        }
+        guard payload.items.count <= maximumItems else { throw BackupValidationError.tooManyItems }
+        guard payload.history.count <= maximumHistoryRecords else { throw BackupValidationError.tooManyRecords }
+        guard payload.tasks.count <= maximumTasks else { throw BackupValidationError.tooManyTasks }
+    }
 }

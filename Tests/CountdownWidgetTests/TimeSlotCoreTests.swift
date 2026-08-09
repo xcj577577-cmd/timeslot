@@ -255,4 +255,163 @@ extension TimeSlotCoreTests {
         )
         XCTAssertEqual(item.remaining(at: start.addingTimeInterval(120)), 0, accuracy: 0.001)
     }
+
+    func testColorHexNormalizationAndAlpha() throws {
+        XCTAssertEqual(ColorHex.normalized(" aabbcc "), "#AABBCC")
+        XCTAssertEqual(ColorHex.normalized("#11223380"), "#11223380")
+        XCTAssertEqual(ColorHex.normalized("not-a-color"), ColorHex.fallback)
+        XCTAssertFalse(ColorHex.isValid("#12345"))
+
+        let rgba = try XCTUnwrap(ColorHex.rgba(from: "#11223380"))
+        XCTAssertEqual(rgba.alpha, 128.0 / 255.0, accuracy: 0.0001)
+    }
+
+    func testCountdownItemNormalizesUntrustedFields() {
+        let longTitle = "  " + String(repeating: "时", count: 100) + "  "
+        let item = CountdownItem(
+            title: longTitle,
+            targetDate: Date().addingTimeInterval(60),
+            colorHex: "broken"
+        )
+        XCTAssertEqual(item.title.count, 80)
+        XCTAssertEqual(item.colorHex, ColorHex.fallback)
+    }
+
+    func testExplicitlyEmptyCountdownStorageStaysEmpty() throws {
+        let data = try JSONEncoder().encode([CountdownItem]())
+        XCTAssertEqual(CountdownItemsStoragePolicy.resolve(data), .decoded([]))
+        XCTAssertEqual(CountdownItemsStoragePolicy.resolve(nil), .missing)
+        XCTAssertEqual(
+            CountdownItemsStoragePolicy.resolve(Data("broken".utf8)),
+            .corrupted
+        )
+    }
+
+    func testCorruptedPomodoroStateIsClampedAndRepaired() throws {
+        let json = """
+        {
+          "taskTitle": "   ",
+          "phase": "focus",
+          "focusMinutes": 0,
+          "shortBreakMinutes": -5,
+          "longBreakMinutes": 999,
+          "roundsBeforeLongBreak": 0,
+          "weeklyFocusGoalMinutes": 0,
+          "completedFocusSessions": -12,
+          "isRunning": true,
+          "pausedRemaining": -30,
+          "accumulatedElapsed": 999999,
+          "stopwatchRunning": true,
+          "stopwatchAccumulated": -10
+        }
+        """
+        let state = try JSONDecoder().decode(PomodoroState.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.taskTitle, PomodoroTaskPalette.fallbackTitle)
+        XCTAssertEqual(state.focusMinutes, 1)
+        XCTAssertEqual(state.shortBreakMinutes, 1)
+        XCTAssertEqual(state.longBreakMinutes, 60)
+        XCTAssertEqual(state.roundsBeforeLongBreak, 2)
+        XCTAssertEqual(state.weeklyFocusGoalMinutes, 60)
+        XCTAssertEqual(state.completedFocusSessions, 0)
+        XCTAssertEqual(state.pausedRemaining, 0)
+        XCTAssertEqual(state.accumulatedElapsed, 60)
+        XCTAssertEqual(state.stopwatchAccumulated, 0)
+        XCTAssertFalse(state.isRunning)
+        XCTAssertFalse(state.stopwatchRunning)
+    }
+
+    func testPomodoroNormalizationPreventsTwoRunningTimers() {
+        let now = Date(timeIntervalSinceReferenceDate: 13_000_000)
+        var state = PomodoroState()
+        state.isRunning = true
+        state.endDate = now.addingTimeInterval(600)
+        state.sessionStartedAt = now
+        state.activeStartedAt = now
+        state.stopwatchRunning = true
+        state.stopwatchSessionStartedAt = now
+        state.stopwatchActiveStartedAt = now
+
+        state.normalizeForRuntime()
+
+        XCTAssertFalse(state.isRunning)
+        XCTAssertNil(state.endDate)
+        XCTAssertTrue(state.stopwatchRunning)
+        XCTAssertNotNil(state.stopwatchActiveStartedAt)
+    }
+
+    func testPomodoroTaskTitleIsCappedAtFortyCharacters() {
+        let task = PomodoroTask(title: String(repeating: "专", count: 80))
+        XCTAssertEqual(task.title.count, 40)
+    }
+
+    func testManagedNotificationIdentifiersAreScoped() {
+        let id = UUID(uuidString: "8B3F43CF-BBC8-4F5B-9A2E-45B81E4F3998")!
+        XCTAssertTrue(TimeSlotNotificationIdentifier.isManaged(TimeSlotNotificationIdentifier.pomodoroPhaseEnd))
+        XCTAssertTrue(TimeSlotNotificationIdentifier.isManaged("pomodoro.phase.end.legacy"))
+        XCTAssertTrue(
+            TimeSlotNotificationIdentifier.isManaged(
+                TimeSlotNotificationIdentifier.countdownCompletion(for: id)
+            )
+        )
+        XCTAssertFalse(TimeSlotNotificationIdentifier.isManaged("another-app.notification"))
+    }
+
+    func testLegacyBackupWithoutSchemaOrOptionalCollectionsImports() throws {
+        let payload = BackupPayload(
+            items: [],
+            pomodoro: PomodoroState(),
+            history: [],
+            tasks: [],
+            displayMode: "both",
+            timeUnit: "auto",
+            exportedAt: Date(timeIntervalSinceReferenceDate: 14_000_000)
+        )
+        let encoded = try JSONEncoder().encode(payload)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        for key in ["schemaVersion", "history", "tasks", "displayMode", "timeUnit", "exportedAt"] {
+            object.removeValue(forKey: key)
+        }
+
+        let decoded = try CountdownStore.decodeBackup(
+            JSONSerialization.data(withJSONObject: object)
+        )
+        XCTAssertEqual(decoded.schemaVersion, BackupPayload.currentSchemaVersion)
+        XCTAssertTrue(decoded.items.isEmpty)
+        XCTAssertTrue(decoded.history.isEmpty)
+        XCTAssertTrue(decoded.tasks.isEmpty)
+        XCTAssertEqual(decoded.displayMode, "both")
+        XCTAssertEqual(decoded.timeUnit, "auto")
+    }
+
+    func testBackupRejectsFutureAndInvalidSchemas() throws {
+        for version in [0, BackupPayload.currentSchemaVersion + 1] {
+            let payload = BackupPayload(
+                schemaVersion: version,
+                items: [],
+                pomodoro: PomodoroState(),
+                history: [],
+                tasks: [],
+                displayMode: "both",
+                timeUnit: "auto",
+                exportedAt: Date()
+            )
+            let data = try JSONEncoder().encode(payload)
+            XCTAssertThrowsError(try CountdownStore.decodeBackup(data)) { error in
+                XCTAssertEqual(error as? BackupValidationError, .unsupportedSchema(version))
+            }
+        }
+    }
+
+    func testBackupRejectsOversizedFileBeforeDecoding() {
+        let data = Data(
+            repeating: 0,
+            count: BackupValidationPolicy.maximumFileSize + 1
+        )
+        XCTAssertThrowsError(try CountdownStore.decodeBackup(data)) { error in
+            XCTAssertEqual(error as? BackupValidationError, .fileTooLarge)
+        }
+    }
 }

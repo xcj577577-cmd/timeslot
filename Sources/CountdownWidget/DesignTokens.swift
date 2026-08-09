@@ -1,7 +1,9 @@
 import AppKit
 import SwiftUI
 
-let beijingTimeZone = TimeZone(identifier: "Asia/Shanghai")!
+let beijingTimeZone = TimeZone(identifier: "Asia/Shanghai")
+    ?? TimeZone(secondsFromGMT: 8 * 60 * 60)
+    ?? .current
 let beijingLocale = Locale(identifier: "zh_CN")
 
 var beijingCalendar: Calendar {
@@ -34,6 +36,18 @@ func beijingDateString(
 // 字体、间距和表面层级集中在这里，避免不同页面各自“调一点”后失去一致性。
 // UI 字体使用 macOS 系统字形（中文自动落到苹方），只有计时数字使用圆体，
 // 让阅读和品牌识别各自承担清晰的职责。
+
+/// 品牌色只在这里定义。Logo、强调色与状态色都从这组颜色派生，
+/// 避免主应用、表单和小组件出现“差不多的青绿”。
+enum BrandPalette {
+    static let ink = Color(hex: "#0A1926")
+    static let deepTeal = Color(hex: "#103D3B")
+    static let teal = Color(hex: "#35B79F")
+    static let mint = Color(hex: "#8CE4D0")
+    static let gold = Color(hex: "#E8C27A")
+    static let coral = Color(hex: "#D86F52")
+    static let indigo = Color(hex: "#5A78B8")
+}
 
 /// 字号阶梯。正文保持清晰的 12 / 13.5 / 14.5 / 17 层级，再单独处理标题和计时读数。
 enum Typo {
@@ -72,13 +86,13 @@ enum Space {
 /// 原来父 0.035 里套 0.025，同色系里更浅的块几乎看不出边界。
 enum Surface {
     static let canvas = Color(nsColor: .windowBackgroundColor)
-    static let card = Color.primary.opacity(0.06)     // 一级卡片，直接落在窗口背景上（0.045 在浅色下几乎不可见）
-    static let nested = Color.primary.opacity(0.08)    // 嵌套在一级卡片里的块
-    static let field = Color.primary.opacity(0.06)     // 搜索框等输入控件
-    static let track = Color.primary.opacity(0.10)     // 进度条槽、圆环底圈
+    static let card = Color(nsColor: .controlBackgroundColor).opacity(0.78)
+    static let nested = Color.primary.opacity(0.075)
+    static let field = Color.primary.opacity(0.065)
+    static let track = Color.primary.opacity(0.11)
     static let gridLine = Color.primary.opacity(0.07)  // 图表网格线
     static let border = Color.primary.opacity(0.10)
-    static let sidebar = Color(nsColor: .controlBackgroundColor).opacity(0.82)
+    static let sidebar = Color(nsColor: .underPageBackgroundColor).opacity(0.88)
 }
 
 enum Radius {
@@ -129,13 +143,24 @@ struct CardSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(Surface.card)
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Surface.card)
+                    .overlay {
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.035), Color.clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    }
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(Color.primary.opacity(borderOpacity), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: Color.black.opacity(0.07), radius: shadowRadius, x: 0, y: shadowY)
+            .shadow(color: Color.black.opacity(0.055), radius: shadowRadius, x: 0, y: shadowY)
     }
 }
 
@@ -145,6 +170,10 @@ struct NestedSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(Surface.nested)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.primary.opacity(0.055), lineWidth: 1)
+            }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
@@ -173,11 +202,13 @@ extension View {
 /// 让自定义（.plain）按钮也有 macOS 原生般的点击反馈，不再“点下去没反应”。
 /// 不重写背景，可与选中态/描边等既有视觉叠加。
 struct TimeSlotPressableStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .opacity(configuration.isPressed ? 0.65 : 1)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
@@ -267,13 +298,26 @@ enum ColorPreset: String, Codable, CaseIterable, Identifiable {
 
 extension NSColor {
     convenience init(hex: String) {
-        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var value: UInt64 = 0
-        Scanner(string: cleaned).scanHexInt64(&value)
-        let r = CGFloat((value >> 16) & 0xFF) / 255
-        let g = CGFloat((value >> 8) & 0xFF) / 255
-        let b = CGFloat(value & 0xFF) / 255
-        self.init(srgbRed: r, green: g, blue: b, alpha: 1)
+        let rgba = ColorHex.rgba(from: hex) ?? (0.17, 0.55, 0.49, 1)
+        self.init(
+            srgbRed: rgba.red,
+            green: rgba.green,
+            blue: rgba.blue,
+            alpha: rgba.alpha
+        )
+    }
+}
+
+extension Color {
+    init(hex: String) {
+        let rgba = ColorHex.rgba(from: hex) ?? (0.17, 0.55, 0.49, 1)
+        self.init(
+            .sRGB,
+            red: Double(rgba.red),
+            green: Double(rgba.green),
+            blue: Double(rgba.blue),
+            opacity: Double(rgba.alpha)
+        )
     }
 }
 
@@ -297,30 +341,40 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
     let options: [SegmentOption<Value>]
     @Binding var selection: Value
     let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var selectionAnimation
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options) { option in
                 let isSelected = selection == option.value
                 Button {
-                    withAnimation(.easeOut(duration: 0.18)) {
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0.04)) {
                         selection = option.value
                     }
                 } label: {
                     HStack(spacing: Space.xs) {
                         if let systemImage = option.systemImage {
                             Image(systemName: systemImage)
+                                .imageScale(.small)
+                                .symbolRenderingMode(.hierarchical)
                         }
                         Text(option.title)
                     }
                     .font(AppType.ui(Typo.footnote, .medium))
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 32)
                     .padding(.horizontal, Space.s)
-                    .padding(.vertical, Space.s)
                     .foregroundStyle(isSelected ? Color.white : Color.primary)
                     .background(
-                        RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
-                            .fill(isSelected ? tint : Color.clear)
+                        Group {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
+                                    .fill(tint)
+                                    .matchedGeometryEffect(id: "selection", in: selectionAnimation)
+                                    .shadow(color: tint.opacity(0.22), radius: 4, y: 1)
+                            }
+                        }
                     )
                 }
                 .buttonStyle(TimeSlotPressableStyle())
@@ -345,6 +399,7 @@ struct TimeSlotProgressBar: View {
     let color: Color
     var height: CGFloat = 8
     var showsKnob: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -381,7 +436,7 @@ struct TimeSlotProgressBar: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .frame(height: showsKnob ? height + 4 : height)
-        .animation(.easeOut(duration: 0.35), value: progress)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: progress)
     }
 }
 
@@ -391,6 +446,7 @@ struct TimeSlotRing: View {
     let color: Color
     var lineWidth: CGFloat = 12
     var showsGlow: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let clamped = min(1, max(0, progress))
@@ -411,6 +467,6 @@ struct TimeSlotRing: View {
                 .rotationEffect(.degrees(-90))
                 .shadow(color: showsGlow ? color.opacity(0.30) : .clear, radius: 7)
         }
-        .animation(.easeOut(duration: 0.45), value: progress)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.45), value: progress)
     }
 }

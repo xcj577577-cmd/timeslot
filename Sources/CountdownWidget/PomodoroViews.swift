@@ -21,6 +21,7 @@ struct PomodoroView: View {
     @State private var showingClearHistoryConfirmation = false
     @State private var showingResetConfirmation = false
     @State private var timerMode: PomodoroTimerMode
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(store: CountdownStore, onSyncWidget: @escaping () -> Void) {
         self.store = store
@@ -192,7 +193,7 @@ struct PomodoroView: View {
                 .buttonStyle(.bordered)
 
                 Button(action: onSyncWidget) {
-                    Label("同步到桌面", systemImage: "rectangle.3.group")
+                    Label("设为小组件内容", systemImage: "rectangle.3.group")
                 }
                 .buttonStyle(.bordered)
                 .tint(phaseColor)
@@ -574,7 +575,7 @@ struct PomodoroView: View {
                 .help(isTimerActive ? "重置会清除当前计时" : "重置计时")
 
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75)) {
                         if timerMode == .stopwatch {
                             store.startOrPauseStopwatch()
                         } else {
@@ -603,7 +604,7 @@ struct PomodoroView: View {
                 )
 
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7)) {
                         if timerMode == .stopwatch {
                             store.stopStopwatch()
                         } else {
@@ -626,7 +627,7 @@ struct PomodoroView: View {
 
                 if timerMode == .countdown {
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7)) {
                             store.skipPomodoroPhase()
                         }
                     } label: {
@@ -1030,7 +1031,7 @@ struct PomodoroView: View {
     }
 
     private func resetTimer() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7)) {
             if timerMode == .stopwatch {
                 store.resetStopwatch()
             } else {

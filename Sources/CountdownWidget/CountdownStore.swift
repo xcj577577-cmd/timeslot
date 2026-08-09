@@ -50,6 +50,7 @@ final class CountdownStore: ObservableObject {
             NSApp.appearance = appearanceMode.nsAppearance
         }
     }
+    @Published private(set) var widgetSyncState: WidgetSyncState = .checking
 
     private var timerCancellable: AnyCancellable?
     private var widgetReloadTask: DispatchWorkItem?
@@ -68,6 +69,9 @@ final class CountdownStore: ObservableObject {
     private var notificationPermissionGranted = false
     /// 已排入系统队列的番茄钟阶段通知 id，暂停/重置/停顿时按 id 精确取消，不误删倒计时通知。
     private var pendingPomodoroNotificationIDs: Set<String> = []
+    /// 通知队列查询是异步的。用代次丢弃较早的重建任务，避免快速编辑/删除时
+    /// 旧任务在最后反而把刚排好的新通知清掉。
+    private var notificationRescheduleGeneration = 0
     private static let sharedDefaultsName = "4FKFDX48HX.com.xianz.countdownwidget.shared"
     private let storageKey = "countdownItems"
     private let pomodoroStorageKey = "pomodoroState"
@@ -79,6 +83,9 @@ final class CountdownStore: ObservableObject {
     private let appearanceModeKey = "appearanceMode"
     /// 不足 10 秒的专注/阶段没有统计意义，不写入历史，启动时也会清掉旧数据。
     private static let minimumMeaningfulSessionDuration: TimeInterval = 10
+    private static let maximumHistoryCount = 10_000
+    private static let pomodoroNotificationIdentifier = TimeSlotNotificationIdentifier.pomodoroPhaseEnd
+    private static let validWidgetTimeUnits = ["days", "hours", "precise", "auto"]
     private static let widgetKinds = [
         "CountdownDesktopWidget",
         "CountdownDesktopWidgetConfig",
@@ -119,11 +126,14 @@ final class CountdownStore: ObservableObject {
     }
 
     private func persistWidgetStateFile() {
-        guard let url = widgetStateURL else { return }
+        guard let url = widgetStateURL else {
+            widgetSyncState = .unavailable
+            return
+        }
         let state = WidgetStateFile(
             items: items,
             pomodoro: pomodoro,
-            pomodoroHistory: pomodoroHistory,
+            pomodoroHistory: widgetHistorySnapshot(),
             displayMode: widgetDisplayMode.rawValue,
             timeUnit: widgetTimeUnit,
             updatedAt: Date()
@@ -141,14 +151,26 @@ final class CountdownStore: ObservableObject {
                 try data.write(to: url, options: .atomic)
                 didWrite = true
             } catch {
-                // 写文件失败时仍走 UserDefaults 与 reload 兜底，不阻塞计时。
+                let message = error.localizedDescription
+                Task { @MainActor [weak self] in
+                    self?.widgetSyncState = .failed(message)
+                }
             }
             guard didWrite else { return }
+            Task { @MainActor [weak self] in
+                self?.widgetSyncState = .ready(state.updatedAt)
+            }
             // 只有原子文件写完后才请求 WidgetKit 重建，避免扩展先读到旧快照。
             for kind in widgetKinds {
                 WidgetCenter.shared.reloadTimelines(ofKind: kind)
             }
         }
+    }
+
+    private func widgetHistorySnapshot() -> [PomodoroSessionRecord] {
+        let cutoff = beijingCalendar.date(byAdding: .day, value: -8, to: Date())
+            ?? Date().addingTimeInterval(-8 * 86_400)
+        return pomodoroHistory.filter { $0.endedAt >= cutoff }
     }
 
     private static func loadSharedData(forKey key: String) -> Data? {
@@ -195,6 +217,7 @@ final class CountdownStore: ObservableObject {
 
     func setSoundsEnabled(_ enabled: Bool) {
         soundsEnabled = enabled
+        rescheduleAllNotifications()
     }
 
     private static func defaultCountdownItems() -> [CountdownItem] {
@@ -221,28 +244,22 @@ final class CountdownStore: ObservableObject {
         if !shouldRestoreRunningPomodoro {
             countdownDefaults.synchronize()
         }
+        let storedItemsData = CountdownStore.loadSharedData(forKey: storageKey)
         var loadedItems: [CountdownItem]
-        if let data = CountdownStore.loadSharedData(forKey: storageKey) {
-            do {
-                let saved = try JSONDecoder().decode([CountdownItem].self, from: data)
-                loadedItems = saved.isEmpty ? Self.defaultCountdownItems() : saved
-            } catch {
-                Self.preserveCorruptedDataIfNeeded(data, forKey: storageKey)
-                loadedItems = Self.defaultCountdownItems()
-            }
-        } else {
+        switch CountdownItemsStoragePolicy.resolve(storedItemsData) {
+        case .decoded(let saved):
+            // 空数组代表用户明确删除了全部倒计时，不能在下次启动时悄悄塞回示例数据。
+            loadedItems = saved
+        case .corrupted:
+            Self.preserveCorruptedDataIfNeeded(storedItemsData, forKey: storageKey)
+            loadedItems = Self.defaultCountdownItems()
+        case .missing:
             loadedItems = Self.defaultCountdownItems()
         }
         // 桌面小组件取的是第一个 isPinned 的条目，所以这里保证有且只有一个被选中。
         // 已有数据两种都可能坏：旧版默认值 true 会让多条同时选中（界面上每条都显示
         // 「当前内容」），更旧的数据又完全没有这个字段、回落成一条都没选。
-        if let pinnedIndex = loadedItems.firstIndex(where: { $0.isPinned }) {
-            for index in loadedItems.indices where index != pinnedIndex {
-                loadedItems[index].isPinned = false
-            }
-        } else if !loadedItems.isEmpty {
-            loadedItems[0].isPinned = true
-        }
+        loadedItems = Self.normalizedCountdownItems(loadedItems)
         items = loadedItems
         let loadedPomodoroFromDefaults: PomodoroState
         if let data = CountdownStore.loadSharedData(forKey: pomodoroStorageKey) {
@@ -255,16 +272,24 @@ final class CountdownStore: ObservableObject {
         } else {
             loadedPomodoroFromDefaults = PomodoroState()
         }
-        let loadedPomodoro = shouldRestoreRunningPomodoro
-            ? sharedWidgetState!.pomodoro
-            : loadedPomodoroFromDefaults
+        let loadedPomodoro: PomodoroState
+        if shouldRestoreRunningPomodoro, let sharedWidgetState {
+            loadedPomodoro = sharedWidgetState.pomodoro
+        } else {
+            loadedPomodoro = loadedPomodoroFromDefaults
+        }
         pomodoro = loadedPomodoro
         if let data = CountdownStore.loadSharedData(forKey: pomodoroHistoryStorageKey) {
             do {
                 let saved = try JSONDecoder().decode([PomodoroSessionRecord].self, from: data)
-                pomodoroHistory = saved.filter {
-                    $0.actualDuration >= Self.minimumMeaningfulSessionDuration
-                }
+                pomodoroHistory = saved
+                    .filter {
+                        $0.actualDuration.isFinite
+                            && $0.actualDuration >= Self.minimumMeaningfulSessionDuration
+                    }
+                    .sorted { $0.endedAt > $1.endedAt }
+                    .prefix(Self.maximumHistoryCount)
+                    .map { $0 }
             } catch {
                 Self.preserveCorruptedDataIfNeeded(data, forKey: pomodoroHistoryStorageKey)
                 pomodoroHistory = []
@@ -295,10 +320,14 @@ final class CountdownStore: ObservableObject {
             loadedTasks = [currentTask]
         }
         // 旧数据没有 colorHex，这里按列表顺序补齐，前 8 个任务各拿一种颜色。
-        pomodoroTasks = CountdownStore.withAssignedColors(loadedTasks)
+        pomodoroTasks = CountdownStore.normalizedTasks(
+            loadedTasks,
+            currentTaskTitle: currentTaskTitle
+        )
         widgetDisplayMode = CountdownStore.loadSharedString(forKey: widgetDisplayModeKey)
             .flatMap(WidgetDisplayMode.init(rawValue:)) ?? .both
-        widgetTimeUnit = CountdownStore.loadSharedString(forKey: widgetTimeUnitKey) ?? "days"
+        let storedTimeUnit = CountdownStore.loadSharedString(forKey: widgetTimeUnitKey) ?? "auto"
+        widgetTimeUnit = Self.validWidgetTimeUnits.contains(storedTimeUnit) ? storedTimeUnit : "auto"
         let storedID = countdownDefaults.string(forKey: "selectedCountdownID").flatMap(UUID.init(uuidString:))
         accentPreset = ColorPreset(rawValue: countdownDefaults.string(forKey: accentPresetKey) ?? "") ?? .teal
         appearanceMode = AppAppearance(rawValue: countdownDefaults.string(forKey: appearanceModeKey) ?? "") ?? .system
@@ -350,6 +379,7 @@ final class CountdownStore: ObservableObject {
         )
         items.insert(item, at: 0)
         selectedID = item.id
+        requestNotificationPermissionIfNeeded()
         rescheduleCountdownNotifications()
     }
 
@@ -361,8 +391,8 @@ final class CountdownStore: ObservableObject {
     func applyEdit(to item: CountdownItem, title: String, targetDate: Date, colorHex: String) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         var updated = items[index]
-        updated.title = title.isEmpty ? "未命名倒计时" : title
-        updated.colorHex = colorHex
+        updated.title = CountdownItem.normalizedTitle(title)
+        updated.colorHex = ColorHex.normalized(colorHex)
         if targetDate != updated.targetDate {
             // 改了目标时间就重新确定进度条的基准区间，否则进度仍按创建时的跨度计算。
             let now = Date()
@@ -375,6 +405,7 @@ final class CountdownStore: ObservableObject {
         }
         items[index] = updated
         countdownCompletionPlayed.remove(updated.id)
+        requestNotificationPermissionIfNeeded()
         rescheduleCountdownNotifications()
     }
 
@@ -421,7 +452,7 @@ final class CountdownStore: ObservableObject {
 
     func updatePomodoroTaskTitle(_ title: String) {
         var updated = pomodoro
-        updated.taskTitle = title
+        updated.taskTitle = String(PomodoroTaskPalette.normalized(title).prefix(40))
         pomodoro = updated
     }
 
@@ -434,10 +465,70 @@ final class CountdownStore: ObservableObject {
     /// 给还没有颜色的任务补一个：旧数据迁移、以及任何漏分配的情况。
     private static func withAssignedColors(_ tasks: [PomodoroTask]) -> [PomodoroTask] {
         var result = tasks
-        for index in result.indices where result[index].colorHex.isEmpty {
-            result[index].colorHex = PomodoroTaskPalette.nextColorHex(after: result.map(\.colorHex))
+        for index in result.indices {
+            if result[index].colorHex.isEmpty {
+                result[index].colorHex = PomodoroTaskPalette.nextColorHex(after: result.map(\.colorHex))
+            } else {
+                result[index].colorHex = ColorHex.normalized(result[index].colorHex)
+            }
         }
         return result
+    }
+
+    private static func normalizedCountdownItems(_ candidates: [CountdownItem]) -> [CountdownItem] {
+        var seenIDs = Set<UUID>()
+        var result: [CountdownItem] = []
+        result.reserveCapacity(candidates.count)
+        for var item in candidates where seenIDs.insert(item.id).inserted {
+            item.title = CountdownItem.normalizedTitle(item.title)
+            item.colorHex = ColorHex.normalized(item.colorHex)
+            item.totalDuration = item.totalDuration.isFinite ? max(1, item.totalDuration) : 1
+            if let paused = item.pausedRemaining {
+                item.pausedRemaining = paused.isFinite ? max(0, paused) : nil
+            }
+            result.append(item)
+        }
+
+        if let pinnedIndex = result.firstIndex(where: { $0.isPinned }) {
+            for index in result.indices where index != pinnedIndex {
+                result[index].isPinned = false
+            }
+        } else if !result.isEmpty {
+            result[0].isPinned = true
+        }
+        return result
+    }
+
+    private static func normalizedTasks(
+        _ candidates: [PomodoroTask],
+        currentTaskTitle: String
+    ) -> [PomodoroTask] {
+        var seenIDs = Set<UUID>()
+        var seenTitles = Set<String>()
+        var result: [PomodoroTask] = []
+
+        for var task in candidates where seenIDs.insert(task.id).inserted {
+            task.title = String(PomodoroTaskPalette.normalized(task.title).prefix(40))
+            let comparisonKey = task.title.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: beijingLocale
+            )
+            guard seenTitles.insert(comparisonKey).inserted else { continue }
+            result.append(task)
+        }
+
+        let normalizedCurrent = String(PomodoroTaskPalette.normalized(currentTaskTitle).prefix(40))
+        let currentKey = normalizedCurrent.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: beijingLocale
+        )
+        if !seenTitles.contains(currentKey) {
+            result.insert(PomodoroTask(title: normalizedCurrent), at: 0)
+        }
+        if result.isEmpty {
+            result = [PomodoroTask(title: normalizedCurrent)]
+        }
+        return withAssignedColors(result)
     }
 
     /// 统计里按任务取色：优先用任务上登记的颜色；历史里已删除的任务回落到标题推导。
@@ -530,6 +621,9 @@ final class CountdownStore: ObservableObject {
             )
         }
         pomodoro = updated
+        if updated.isRunning {
+            requestNotificationPermissionIfNeeded()
+        }
         reloadDesktopWidgetNow()
     }
 
@@ -686,13 +780,21 @@ final class CountdownStore: ObservableObject {
         pomodoroHistory.removeAll()
     }
 
+    func refreshDesktopWidgets() {
+        persistWidgetStateFile()
+        reloadDesktopWidgetNow()
+    }
+
     // MARK: - 数据备份与恢复
 
     /// 存档解码失败时，把原始数据原样留存，避免用户数据被默认值静默覆盖。
     private static func preserveCorruptedDataIfNeeded(_ data: Data?, forKey key: String) {
         guard let data, !data.isEmpty else { return }
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("时隙/CorruptedBackups", isDirectory: true)
+        guard let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else { return }
+        let directory = applicationSupport.appendingPathComponent("时隙/CorruptedBackups", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let url = directory.appendingPathComponent("\(key)-\(Int(Date().timeIntervalSince1970)).data")
@@ -713,25 +815,63 @@ final class CountdownStore: ObservableObject {
             timeUnit: widgetTimeUnit,
             exportedAt: Date()
         )
-        return try? JSONEncoder().encode(payload)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return try? encoder.encode(payload)
     }
 
     nonisolated static func decodeBackup(_ data: Data) throws -> BackupPayload {
-        try JSONDecoder().decode(BackupPayload.self, from: data)
+        guard data.count <= BackupValidationPolicy.maximumFileSize else {
+            throw BackupValidationError.fileTooLarge
+        }
+        let payload = try JSONDecoder().decode(BackupPayload.self, from: data)
+        try BackupValidationPolicy.validate(dataSize: data.count, payload: payload)
+        return payload
     }
 
     /// 用备份整体替换当前数据并刷新桌面小组件。
-    func applyBackup(_ payload: BackupPayload) {
-        items = payload.items
-        pomodoro = payload.pomodoro
+    func applyBackup(_ payload: BackupPayload) throws {
+        try preserveAutomaticBackupBeforeImport()
+        items = Self.normalizedCountdownItems(payload.items)
+        var restoredPomodoro = payload.pomodoro
+        restoredPomodoro.normalizeForRuntime()
+        pomodoro = restoredPomodoro
         pomodoroHistory = payload.history
-        pomodoroTasks = CountdownStore.withAssignedColors(payload.tasks)
+            .filter { $0.actualDuration.isFinite && $0.actualDuration >= Self.minimumMeaningfulSessionDuration }
+            .sorted { $0.endedAt > $1.endedAt }
+            .prefix(Self.maximumHistoryCount)
+            .map { $0 }
+        pomodoroTasks = CountdownStore.normalizedTasks(
+            payload.tasks,
+            currentTaskTitle: restoredPomodoro.taskTitle
+        )
         widgetDisplayMode = WidgetDisplayMode(rawValue: payload.displayMode) ?? .both
-        widgetTimeUnit = ["days", "hours", "precise", "auto"].contains(payload.timeUnit)
-            ? payload.timeUnit : "days"
-        selectedID = items.first?.id
+        widgetTimeUnit = Self.validWidgetTimeUnits.contains(payload.timeUnit)
+            ? payload.timeUnit : "auto"
+        selectedID = items.first(where: \.isPinned)?.id ?? items.first?.id
         reloadDesktopWidgetNow()
         rescheduleAllNotifications()
+    }
+
+    private func preserveAutomaticBackupBeforeImport() throws {
+        guard let data = exportBackup() else {
+            throw BackupOperationError.cannotEncodeCurrentData
+        }
+        guard let applicationSupport = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+              ).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let directory = applicationSupport.appendingPathComponent("时隙/AutomaticBackups", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let formatter = ISO8601DateFormatter()
+        let stamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let suffix = UUID().uuidString.prefix(8)
+        try data.write(
+            to: directory.appendingPathComponent("导入前自动备份-\(stamp)-\(suffix).json"),
+            options: .atomic
+        )
     }
 
     private func handlePomodoroTick(at date: Date) {
@@ -805,8 +945,8 @@ final class CountdownStore: ObservableObject {
             status: status
         )
         pomodoroHistory.insert(record, at: 0)
-        if pomodoroHistory.count > 200 {
-            pomodoroHistory.removeLast(pomodoroHistory.count - 200)
+        if pomodoroHistory.count > Self.maximumHistoryCount {
+            pomodoroHistory.removeLast(pomodoroHistory.count - Self.maximumHistoryCount)
         }
     }
 
@@ -825,8 +965,8 @@ final class CountdownStore: ObservableObject {
             status: status
         )
         pomodoroHistory.insert(record, at: 0)
-        if pomodoroHistory.count > 200 {
-            pomodoroHistory.removeLast(pomodoroHistory.count - 200)
+        if pomodoroHistory.count > Self.maximumHistoryCount {
+            pomodoroHistory.removeLast(pomodoroHistory.count - Self.maximumHistoryCount)
         }
     }
 
@@ -921,13 +1061,13 @@ final class CountdownStore: ObservableObject {
     // MARK: - 通知调度（番茄钟阶段 + 倒计时完成）
 
     private static func countdownNotificationIdentifier(for item: CountdownItem) -> String {
-        "countdown.completion.\(item.id.uuidString)"
+        TimeSlotNotificationIdentifier.countdownCompletion(for: item.id)
     }
 
-    /// 番茄钟阶段结束通知。identifier 由阶段与结束时间戳构成，同一阶段重复调度会覆盖旧请求。
+    /// 番茄钟始终只保留一条阶段通知。固定 identifier 能跨进程覆盖旧请求，
+    /// 避免应用重启后，旧阶段通知在错误时间再次弹出。
     private func schedulePomodoroPhaseNotification(phase: PomodoroPhase, endDate: Date, taskTitle: String) {
-        guard notificationsEnabled, notificationPermissionGranted else { return }
-        let identifier = "pomodoro.phase.end.\(phase.rawValue).\(Int(endDate.timeIntervalSince1970))"
+        guard notificationsEnabled, notificationPermissionGranted, endDate > Date() else { return }
         let content = UNMutableNotificationContent()
         content.title = "时隙"
         switch phase {
@@ -938,49 +1078,86 @@ final class CountdownStore: ObservableObject {
         case .longBreak:
             content.body = "长休息结束，开始新的专注轮次"
         }
-        content.sound = .default
+        content.sound = soundsEnabled ? .default : nil
         var components = beijingCalendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: endDate)
         components.calendar = beijingCalendar
         components.timeZone = beijingTimeZone
         let request = UNNotificationRequest(
-            identifier: identifier,
+            identifier: Self.pomodoroNotificationIdentifier,
             content: content,
             trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
         )
-        pendingPomodoroNotificationIDs.insert(identifier)
+        pendingPomodoroNotificationIDs = [Self.pomodoroNotificationIdentifier]
         UNUserNotificationCenter.current().add(request)
     }
 
     private func cancelPomodoroNotifications() {
-        guard !pendingPomodoroNotificationIDs.isEmpty else { return }
-        UNUserNotificationCenter.current().removePendingNotificationRequests(
-            withIdentifiers: Array(pendingPomodoroNotificationIDs)
-        )
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
+            Self.pomodoroNotificationIdentifier
+        ])
         pendingPomodoroNotificationIDs.removeAll()
     }
 
     /// 取消应用排入队列的全部通知（番茄钟 + 倒计时）。
     private func cancelAllScheduledNotifications() {
+        notificationRescheduleGeneration &+= 1
+        let generation = notificationRescheduleGeneration
+        let center = UNUserNotificationCenter.current()
         var ids = Set(pendingPomodoroNotificationIDs)
+        ids.insert(Self.pomodoroNotificationIdentifier)
         ids.formUnion(items.map { Self.countdownNotificationIdentifier(for: $0) })
-        guard !ids.isEmpty else { return }
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: Array(ids))
+        center.removePendingNotificationRequests(withIdentifiers: Array(ids))
         pendingPomodoroNotificationIDs.removeAll()
+
+        // items 里已经找不到刚删除或被备份替换掉的目标，必须从系统队列按前缀清理。
+        Task { @MainActor [weak self] in
+            let identifiers: [String] = await withCheckedContinuation { continuation in
+                center.getPendingNotificationRequests { requests in
+                    continuation.resume(returning: requests.map(\.identifier))
+                }
+            }
+            guard let self, generation == self.notificationRescheduleGeneration else { return }
+            let managedIDs = identifiers.filter(TimeSlotNotificationIdentifier.isManaged)
+            if !managedIDs.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: managedIDs)
+            }
+        }
     }
 
     /// 根据当前状态重建全部通知（倒计时 + 运行中的番茄钟阶段）。
     private func rescheduleAllNotifications() {
-        cancelAllScheduledNotifications()
-        guard notificationsEnabled, notificationPermissionGranted else { return }
-        for item in items where CountdownNotificationPolicy.shouldSchedule(item: item, at: Date()) {
-            scheduleCountdownNotification(for: item)
-        }
-        if pomodoro.isRunning, let endDate = pomodoro.endDate {
-            schedulePomodoroPhaseNotification(
-                phase: pomodoro.phase,
-                endDate: endDate,
-                taskTitle: pomodoro.taskTitle
-            )
+        notificationRescheduleGeneration &+= 1
+        let generation = notificationRescheduleGeneration
+        let center = UNUserNotificationCenter.current()
+
+        Task { @MainActor [weak self] in
+            let identifiers: [String] = await withCheckedContinuation { continuation in
+                center.getPendingNotificationRequests { requests in
+                    continuation.resume(returning: requests.map(\.identifier))
+                }
+            }
+            guard let self, generation == self.notificationRescheduleGeneration else { return }
+
+            let managedIDs = identifiers.filter(TimeSlotNotificationIdentifier.isManaged)
+            if !managedIDs.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: managedIDs)
+            }
+            self.pendingPomodoroNotificationIDs.removeAll()
+
+            guard self.notificationsEnabled, self.notificationPermissionGranted else { return }
+            let now = Date()
+            for item in self.items where CountdownNotificationPolicy.shouldSchedule(item: item, at: now) {
+                self.scheduleCountdownNotification(for: item)
+            }
+            if self.pomodoro.isRunning,
+               let endDate = self.pomodoro.endDate,
+               endDate > now {
+                self.schedulePomodoroPhaseNotification(
+                    phase: self.pomodoro.phase,
+                    endDate: endDate,
+                    taskTitle: self.pomodoro.taskTitle
+                )
+            }
         }
     }
 
@@ -1017,7 +1194,7 @@ final class CountdownStore: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "倒计时结束"
         content.body = "「\(item.title)」时间到"
-        content.sound = .default
+        content.sound = soundsEnabled ? .default : nil
         var components = beijingCalendar.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
             from: item.targetDate

@@ -1,25 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="384" viewBox="0 0 1024 384">
   <defs>
     <linearGradient id="hbg" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#091A2C"/>
-      <stop offset="0.55" stop-color="#0E3836"/>
+      <stop offset="0" stop-color="#0A1926"/>
+      <stop offset="0.55" stop-color="#103D3B"/>
       <stop offset="1" stop-color="#145754"/>
     </linearGradient>
     <linearGradient id="hteal" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#8CE4D0"/>
-      <stop offset="1" stop-color="#38BDA6"/>
+      <stop offset="1" stop-color="#35B79F"/>
     </linearGradient>
     <linearGradient id="hgold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#EDD498"/>
-      <stop offset="1" stop-color="#C79A47"/>
+      <stop offset="0" stop-color="#F3D69B"/>
+      <stop offset="1" stop-color="#E8C27A"/>
     </linearGradient>
   </defs>
-  <rect x="0" y="23" width="338" height="338" rx="76" fill="url(#hbg)"/>
-  <rect x="58" y="156" width="99" height="39" rx="17.5" fill="url(#hteal)"/>
-  <rect x="181" y="217" width="99" height="39" rx="17.5" fill="url(#hteal)"/>
-  <polygon points="157,156 181,195 181,234 157,195" fill="url(#hgold)"/>
-  <circle cx="261" cy="270" r="5.7" fill="#EDD498" fill-opacity="0.95"/>
-  <text x="422" y="219" font-family="PingFangSC-Semibold, PingFang SC, sans-serif" font-size="131" font-weight="600" fill="#0A2838" letter-spacing="15">时隙</text>
-  <rect x="415" y="243" width="148" height="4" rx="2" fill="#E9C98A" fill-opacity="0.8"/>
-  <text x="422" y="275" font-family="PingFangSC-Medium, PingFang SC, Helvetica, Arial, sans-serif" font-size="30" font-weight="500" fill="#1C7A70" letter-spacing="11">SHIXI · TIME SLOT</text>
+  <rect x="0" y="23" width="338" height="338" rx="81" fill="url(#hbg)"/>
+  <rect x="55" y="153" width="108" height="40" rx="18" fill="url(#hteal)"/>
+  <rect x="174" y="191" width="108" height="40" rx="18" fill="url(#hteal)"/>
+  <polygon points="154,155 184,185 184,229 154,199" fill="url(#hgold)"/>
+  <rect x="1" y="24" width="336" height="336" rx="80" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="2"/>
+  <text x="420" y="207" font-family="PingFang SC" font-size="108" font-weight="500" fill="#102A38" letter-spacing="4">时隙</text>
+  <rect x="420" y="235" width="112" height="4" rx="2" fill="#E8C27A" fill-opacity="0.9"/>
+  <text x="422" y="274" font-family="SF Pro Text, Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="600" fill="#247F73" letter-spacing="4">SHIXI / TIME SLOT</text>
 </svg>

@@ -12,7 +12,7 @@ struct CountdownWidgetApp: App {
     @StateObject private var store = CountdownStore()
 
     var body: some Scene {
-        WindowGroup {
+        Window("时隙", id: "main") {
             ContentView(store: store)
                 .frame(minWidth: 980, minHeight: 640)
                 .environment(\.calendar, beijingCalendar)
@@ -55,6 +55,13 @@ struct CountdownWidgetApp: App {
                     NotificationCenter.default.post(name: .switchToPomodoroRequested, object: nil)
                 }
                 .keyboardShortcut("2", modifiers: [.command])
+
+                Divider()
+
+                Button("搜索倒计时") {
+                    NotificationCenter.default.post(name: .focusCountdownSearchRequested, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: [.command])
             }
             CommandMenu("帮助") {
                 Button("桌面小组件使用说明") {
@@ -71,12 +78,51 @@ extension Notification.Name {
     static let switchToPomodoroRequested = Notification.Name("switchToPomodoroRequested")
     static let openPomodoroSettingsRequested = Notification.Name("openPomodoroSettingsRequested")
     static let showWidgetHelpRequested = Notification.Name("showWidgetHelpRequested")
+    static let focusCountdownSearchRequested = Notification.Name("focusCountdownSearchRequested")
+}
+
+@MainActor
+enum BackupFileService {
+    static func export(_ data: Data) throws -> URL? {
+        let panel = NSSavePanel()
+        let formatter = DateFormatter()
+        formatter.locale = beijingLocale
+        formatter.timeZone = beijingTimeZone
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        panel.nameFieldStringValue = "时隙备份-\(formatter.string(from: Date())).json"
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.message = "导出倒计时、专注记录、任务与显示设置"
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    static func chooseImportData() throws -> Data? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "选择之前由时隙导出的 JSON 备份"
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+        guard values.isRegularFile == true else {
+            throw CocoaError(.fileReadUnsupportedScheme)
+        }
+        if let fileSize = values.fileSize,
+           fileSize > BackupValidationPolicy.maximumFileSize {
+            throw BackupValidationError.fileTooLarge
+        }
+        return try Data(contentsOf: url, options: .mappedIfSafe)
+    }
 }
 
 private struct SettingsView: View {
     @ObservedObject var store: CountdownStore
     @State private var pendingImport: BackupPayload?
     @State private var showingImportConfirm = false
+    @State private var operationError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
@@ -125,15 +171,30 @@ private struct SettingsView: View {
             presenting: pendingImport
         ) { payload in
             Button("导入并覆盖当前数据", role: .destructive) {
-                store.applyBackup(payload)
+                do {
+                    try store.applyBackup(payload)
+                } catch {
+                    operationError = error.localizedDescription
+                }
                 pendingImport = nil
             }
             Button("取消", role: .cancel) {
                 pendingImport = nil
             }
-        } message: { _ in
-            Text("导入会覆盖当前全部数据，且无法撤销。建议先「导出备份」再导入。")
+        } message: { payload in
+            Text("将导入 \(payload.items.count) 个倒计时、\(payload.history.count) 条阶段记录。当前数据会先自动备份；如果备份失败，不会更改任何数据。")
                 .lineSpacing(2.5)
+        }
+        .alert(
+            "无法完成操作",
+            isPresented: Binding(
+                get: { operationError != nil },
+                set: { if !$0 { operationError = nil } }
+            )
+        ) {
+            Button("好", role: .cancel) { operationError = nil }
+        } message: {
+            Text(operationError ?? "未知错误")
         }
     }
 
@@ -152,25 +213,25 @@ private struct SettingsView: View {
     }
 
     private func exportBackup() {
-        guard let data = store.exportBackup() else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "时隙备份-\(Date().formatted(.dateTime.year().month().day().hour().minute().second()))"
-        panel.allowedContentTypes = [.json]
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? data.write(to: url, options: .atomic)
+        guard let data = store.exportBackup() else {
+            operationError = "当前数据无法编码为备份。"
+            return
+        }
+        do {
+            _ = try BackupFileService.export(data)
+        } catch {
+            operationError = error.localizedDescription
+        }
     }
 
     private func chooseImportBackup() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        panel.message = "选择之前导出的时隙备份文件"
-        guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? Data(contentsOf: url),
-              let payload = try? CountdownStore.decodeBackup(data) else { return }
-        pendingImport = payload
-        showingImportConfirm = true
+        do {
+            guard let data = try BackupFileService.chooseImportData() else { return }
+            pendingImport = try CountdownStore.decodeBackup(data)
+            showingImportConfirm = true
+        } catch {
+            operationError = error.localizedDescription
+        }
     }
 }
 

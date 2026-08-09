@@ -2,7 +2,9 @@ import SwiftUI
 import WidgetKit
 import AppIntents
 
-private let beijingTimeZone = TimeZone(identifier: "Asia/Shanghai")!
+private let beijingTimeZone = TimeZone(identifier: "Asia/Shanghai")
+    ?? TimeZone(secondsFromGMT: 8 * 60 * 60)
+    ?? .current
 private let beijingLocale = Locale(identifier: "zh_CN")
 
 private var beijingCalendar: Calendar {
@@ -18,6 +20,160 @@ private let sharedPomodoroKey = "pomodoroState"
 private let sharedPomodoroHistoryKey = "pomodoroHistory"
 private let widgetDisplayModeKey = "widgetDisplayMode"
 private let stopwatchWidgetAccentHex = "#2C8C7C"
+private let widgetBrandInkHex = "#0A1926"
+private let widgetBrandDeepTealHex = "#103D3B"
+private let widgetBrandTealHex = "#35B79F"
+private let widgetBrandMintHex = "#8CE4D0"
+private let widgetBrandGoldHex = "#E8C27A"
+
+private enum WidgetColorHex {
+    static let fallback = "#2C8C7C"
+
+    static func normalized(_ value: String) -> String {
+        guard let components = components(from: value) else { return fallback }
+        let red = Int((components.red * 255).rounded())
+        let green = Int((components.green * 255).rounded())
+        let blue = Int((components.blue * 255).rounded())
+        if components.alpha < 0.999 {
+            return String(
+                format: "#%02X%02X%02X%02X",
+                red,
+                green,
+                blue,
+                Int((components.alpha * 255).rounded())
+            )
+        }
+        return String(format: "#%02X%02X%02X", red, green, blue)
+    }
+
+    static func components(
+        from value: String
+    ) -> (red: Double, green: Double, blue: Double, alpha: Double)? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digits = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        let validDigits = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        guard digits.count == 6 || digits.count == 8,
+              digits.unicodeScalars.allSatisfy(validDigits.contains) else { return nil }
+        var raw: UInt64 = 0
+        guard Scanner(string: digits).scanHexInt64(&raw) else { return nil }
+        if digits.count == 8 {
+            return (
+                Double((raw >> 24) & 0xFF) / 255,
+                Double((raw >> 16) & 0xFF) / 255,
+                Double((raw >> 8) & 0xFF) / 255,
+                Double(raw & 0xFF) / 255
+            )
+        }
+        return (
+            Double((raw >> 16) & 0xFF) / 255,
+            Double((raw >> 8) & 0xFF) / 255,
+            Double(raw & 0xFF) / 255,
+            1
+        )
+    }
+}
+
+/// App 图标在小组件里的微缩版本。保持同一组“错位时间带 + 金色时隙”几何，
+/// 但删除小尺寸下无法辨认的高光与描边，确保 13pt 仍是一个清晰符号。
+private struct WidgetBrandGlyph: View {
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: widgetBrandInkHex), Color(hex: widgetBrandDeepTealHex)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: size * 0.06, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: widgetBrandMintHex), Color(hex: widgetBrandTealHex)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size * 0.34, height: size * 0.13)
+                .offset(x: -size * 0.17, y: -size * 0.06)
+                .widgetAccentable()
+
+            RoundedRectangle(cornerRadius: size * 0.06, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: widgetBrandMintHex), Color(hex: widgetBrandTealHex)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size * 0.34, height: size * 0.13)
+                .offset(x: size * 0.17, y: size * 0.06)
+                .widgetAccentable()
+
+            Path { path in
+                path.move(to: CGPoint(x: size * 0.455, y: size * 0.39))
+                path.addLine(to: CGPoint(x: size * 0.545, y: size * 0.48))
+                path.addLine(to: CGPoint(x: size * 0.545, y: size * 0.61))
+                path.addLine(to: CGPoint(x: size * 0.455, y: size * 0.52))
+                path.closeSubpath()
+            }
+            .fill(Color(hex: widgetBrandGoldHex))
+            .widgetAccentable()
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct WidgetModeLabel: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            WidgetBrandGlyph(size: 13)
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .tracking(0.35)
+        }
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct WidgetBackdrop: View {
+    let accent: Color
+    let family: WidgetFamily
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color(nsColor: .windowBackgroundColor)
+
+            LinearGradient(
+                colors: [accent.opacity(0.12), accent.opacity(0.025), .clear],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            if family != .systemSmall {
+                VStack(alignment: .trailing, spacing: 7) {
+                    Capsule()
+                        .fill(Color(hex: widgetBrandMintHex).opacity(0.11))
+                        .frame(width: 74, height: 6)
+                        .offset(x: -18)
+                    Capsule()
+                        .fill(Color(hex: widgetBrandGoldHex).opacity(0.10))
+                        .frame(width: 74, height: 6)
+                }
+                .rotationEffect(.degrees(-10))
+                .offset(x: 22, y: 8)
+                .accessibilityHidden(true)
+            }
+        }
+    }
+}
 
 /// 小组件专用精致进度条：浅色轨道 + 品牌渐变填充 + 柔和阴影。
 /// 与客户端 TimeSlotProgressBar 同源设计，但更薄、不占用额外高度。
@@ -44,10 +200,10 @@ private struct WidgetProgressBar: View {
                     )
                     .frame(width: width)
                     .shadow(color: color.opacity(0.25), radius: 2, x: 0, y: 1)
+                    .widgetAccentable()
             }
         }
         .frame(height: height)
-        .animation(.easeOut(duration: 0.3), value: value)
     }
 }
 
@@ -74,13 +230,19 @@ struct SharedCountdownItem: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        title = try container.decode(String.self, forKey: .title)
+        let decodedTitle = try container.decode(String.self, forKey: .title)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        title = String((decodedTitle.isEmpty ? "未命名倒计时" : decodedTitle).prefix(80))
         targetDate = try container.decode(Date.self, forKey: .targetDate)
-        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "#2C8C7C"
+        colorHex = WidgetColorHex.normalized(
+            try container.decodeIfPresent(String.self, forKey: .colorHex) ?? WidgetColorHex.fallback
+        )
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
-        totalDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .totalDuration)
-        pausedRemaining = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
+        let decodedDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .totalDuration)
+        totalDuration = decodedDuration?.isFinite == true ? max(1, decodedDuration ?? 1) : nil
+        let decodedPaused = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
+        pausedRemaining = decodedPaused?.isFinite == true ? max(0, decodedPaused ?? 0) : nil
     }
 }
 
@@ -184,25 +346,67 @@ struct SharedPomodoroState: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        taskTitle = try container.decodeIfPresent(String.self, forKey: .taskTitle) ?? "专注当前任务"
-        phase = try container.decodeIfPresent(SharedPomodoroPhase.self, forKey: .phase) ?? .focus
-        focusMinutes = try container.decodeIfPresent(Int.self, forKey: .focusMinutes) ?? 25
-        shortBreakMinutes = try container.decodeIfPresent(Int.self, forKey: .shortBreakMinutes) ?? 5
-        longBreakMinutes = try container.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 15
-        roundsBeforeLongBreak = try container.decodeIfPresent(Int.self, forKey: .roundsBeforeLongBreak) ?? 4
-        weeklyFocusGoalMinutes = try container.decodeIfPresent(Int.self, forKey: .weeklyFocusGoalMinutes)
-            ?? 10 * 60
-        completedFocusSessions = try container.decodeIfPresent(Int.self, forKey: .completedFocusSessions) ?? 0
-        isRunning = try container.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false
-        endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
-        pausedRemaining = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining) ?? 0
+        let rawTitle = try container.decodeIfPresent(String.self, forKey: .taskTitle) ?? "专注当前任务"
+        let trimmedTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        taskTitle = String((trimmedTitle.isEmpty ? "专注当前任务" : trimmedTitle).prefix(40))
+        let decodedPhase = try container.decodeIfPresent(SharedPomodoroPhase.self, forKey: .phase) ?? .focus
+        phase = decodedPhase
+        let decodedFocus = min(120, max(1, try container.decodeIfPresent(Int.self, forKey: .focusMinutes) ?? 25))
+        let decodedShortBreak = min(30, max(1, try container.decodeIfPresent(Int.self, forKey: .shortBreakMinutes) ?? 5))
+        let decodedLongBreak = min(60, max(1, try container.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 15))
+        focusMinutes = decodedFocus
+        shortBreakMinutes = decodedShortBreak
+        longBreakMinutes = decodedLongBreak
+        roundsBeforeLongBreak = min(
+            8,
+            max(2, try container.decodeIfPresent(Int.self, forKey: .roundsBeforeLongBreak) ?? 4)
+        )
+        weeklyFocusGoalMinutes = min(
+            168 * 60,
+            max(60, try container.decodeIfPresent(Int.self, forKey: .weeklyFocusGoalMinutes) ?? 10 * 60)
+        )
+        completedFocusSessions = max(
+            0,
+            try container.decodeIfPresent(Int.self, forKey: .completedFocusSessions) ?? 0
+        )
+
+        let decodedEndDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
+        let requestedRunning = try container.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false
+        isRunning = requestedRunning && decodedEndDate != nil
+        endDate = isRunning ? decodedEndDate : nil
+        let phaseDuration: TimeInterval
+        switch decodedPhase {
+        case .focus: phaseDuration = TimeInterval(decodedFocus * 60)
+        case .shortBreak: phaseDuration = TimeInterval(decodedShortBreak * 60)
+        case .longBreak: phaseDuration = TimeInterval(decodedLongBreak * 60)
+        }
+        let decodedPaused = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedRemaining)
+            ?? phaseDuration
+        pausedRemaining = min(
+            phaseDuration,
+            max(0, decodedPaused.isFinite ? decodedPaused : phaseDuration)
+        )
         sessionStartedAt = try container.decodeIfPresent(Date.self, forKey: .sessionStartedAt)
-        activeStartedAt = try container.decodeIfPresent(Date.self, forKey: .activeStartedAt)
-        accumulatedElapsed = try container.decodeIfPresent(TimeInterval.self, forKey: .accumulatedElapsed) ?? 0
-        stopwatchRunning = try container.decodeIfPresent(Bool.self, forKey: .stopwatchRunning) ?? false
-        stopwatchSessionStartedAt = try container.decodeIfPresent(Date.self, forKey: .stopwatchSessionStartedAt)
-        stopwatchActiveStartedAt = try container.decodeIfPresent(Date.self, forKey: .stopwatchActiveStartedAt)
-        stopwatchAccumulated = try container.decodeIfPresent(TimeInterval.self, forKey: .stopwatchAccumulated) ?? 0
+        activeStartedAt = isRunning
+            ? try container.decodeIfPresent(Date.self, forKey: .activeStartedAt)
+            : nil
+        let decodedAccumulated = try container.decodeIfPresent(TimeInterval.self, forKey: .accumulatedElapsed) ?? 0
+        accumulatedElapsed = min(
+            phaseDuration,
+            max(0, decodedAccumulated.isFinite ? decodedAccumulated : 0)
+        )
+
+        let decodedStopwatchStart = try container.decodeIfPresent(Date.self, forKey: .stopwatchActiveStartedAt)
+        let requestedStopwatchRunning = try container.decodeIfPresent(Bool.self, forKey: .stopwatchRunning) ?? false
+        stopwatchRunning = requestedStopwatchRunning && decodedStopwatchStart != nil && !isRunning
+        stopwatchSessionStartedAt = isRunning
+            ? nil
+            : try container.decodeIfPresent(Date.self, forKey: .stopwatchSessionStartedAt)
+        stopwatchActiveStartedAt = stopwatchRunning ? decodedStopwatchStart : nil
+        let decodedStopwatch = try container.decodeIfPresent(TimeInterval.self, forKey: .stopwatchAccumulated) ?? 0
+        stopwatchAccumulated = isRunning
+            ? 0
+            : max(0, decodedStopwatch.isFinite ? decodedStopwatch : 0)
     }
 
     var isStopwatchActive: Bool {
@@ -379,28 +583,30 @@ private enum CountdownEntryFactory {
         if let dict = sharedPreferencesDictionary(), let value = dict[key] as? Data {
             return value
         }
-        let defaults = UserDefaults(suiteName: sharedDefaultsName) ?? .standard
-        return defaults.data(forKey: key) ?? UserDefaults.standard.data(forKey: key)
+        return UserDefaults(suiteName: sharedDefaultsName)?.data(forKey: key)
     }
 
     static func loadSharedString(forKey key: String) -> String? {
         if let dict = sharedPreferencesDictionary(), let value = dict[key] as? String {
             return value
         }
-        let defaults = UserDefaults(suiteName: sharedDefaultsName) ?? .standard
-        return defaults.string(forKey: key) ?? UserDefaults.standard.string(forKey: key)
+        return UserDefaults(suiteName: sharedDefaultsName)?.string(forKey: key)
     }
 
     static func loadSnapshot(displayModeOverride: String?) -> Snapshot {
         let stateFile = loadWidgetStateFile()
 
-        let displayMode = displayModeOverride
+        let requestedDisplayMode = displayModeOverride
             ?? stateFile?.displayMode
             ?? loadSharedString(forKey: widgetDisplayModeKey)
             ?? "both"
-        let timeUnit = stateFile?.timeUnit
+        let displayMode = ["countdown", "pomodoro", "stopwatch", "weekly", "both"]
+            .contains(requestedDisplayMode) ? requestedDisplayMode : "both"
+        let requestedTimeUnit = stateFile?.timeUnit
             ?? loadSharedString(forKey: "widgetTimeUnit")
             ?? "days"
+        let timeUnit = ["days", "hours", "precise", "auto"].contains(requestedTimeUnit)
+            ? requestedTimeUnit : "auto"
 
         var item: SharedCountdownItem?
         if let items = stateFile?.items {
@@ -450,11 +656,34 @@ private enum CountdownEntryFactory {
     static func makeTimeline(displayModeOverride: String? = nil) -> Timeline<CountdownEntry> {
         let now = Date()
         let snapshot = loadSnapshot(displayModeOverride: displayModeOverride)
-        // 45 秒后主动向系统请求新时间线，让扩展重新读取状态文件。
-        // 这样即使应用的刷新请求被系统预算合并，小组件最多 45 秒也会自己同步一次。
-        let entries = [0, 45].map { secondsFromNow in
+        let hasActivePomodoro = snapshot.pomodoro?.isRunning == true
+            && (snapshot.pomodoro?.endDate ?? .distantPast) > now
+        let hasActiveTimer = hasActivePomodoro || snapshot.pomodoro?.stopwatchRunning == true
+        let fallbackInterval: TimeInterval = hasActiveTimer ? 15 * 60 : 60 * 60
+        let fallbackDate = now.addingTimeInterval(fallbackInterval)
+
+        // 数字走秒交给 Text(..., style: .timer)，时间线只负责跨越“阶段结束/目标到达”
+        // 这类语义边界。应用内状态变化仍会主动 reloadTimelines；这里用 15/60 分钟
+        // 做低频兜底，避免高频刷新耗尽 WidgetKit 预算后反而长期不更新。
+        var dates = [now]
+        if let endDate = snapshot.pomodoro?.endDate,
+           endDate > now,
+           endDate <= fallbackDate {
+            dates.append(endDate.addingTimeInterval(0.5))
+        }
+        if let targetDate = snapshot.item?.targetDate,
+           snapshot.item?.pausedRemaining == nil,
+           targetDate > now,
+           targetDate <= fallbackDate {
+            dates.append(targetDate.addingTimeInterval(0.5))
+        }
+        dates.append(fallbackDate)
+
+        let entries = Array(Set(dates.map { $0.timeIntervalSinceReferenceDate }))
+            .sorted()
+            .map { timestamp in
             CountdownEntry(
-                date: now.addingTimeInterval(TimeInterval(secondsFromNow)),
+                date: Date(timeIntervalSinceReferenceDate: timestamp),
                 displayMode: snapshot.displayMode,
                 timeUnit: snapshot.timeUnit,
                 item: snapshot.item,
@@ -462,7 +691,7 @@ private enum CountdownEntryFactory {
                 pomodoroHistory: snapshot.pomodoroHistory
             )
         }
-        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(45)))
+        return Timeline(entries: entries, policy: .after(fallbackDate))
     }
 }
 
@@ -524,6 +753,7 @@ struct ConfigurableCountdownProvider: AppIntentTimelineProvider {
 struct CountdownDesktopWidgetView: View {
     let entry: CountdownEntry
     @Environment(\.widgetFamily) private var family
+    @Environment(\.colorScheme) private var colorScheme
 
     /// 点击小组件时打开对应的应用页面。
     private var widgetOpenURL: URL? {
@@ -542,12 +772,7 @@ struct CountdownDesktopWidgetView: View {
     }
 
     var body: some View {
-        // 实时自驱：每 10 秒重新读取共享状态文件并渲染，不依赖
-        // WidgetCenter.reloadTimelines（系统可能节流/延迟），保证
-        // 开始/停止/暂停后小组件最多 10 秒内跟随主 App。
-        TimelineView(.periodic(from: .now, by: 10)) { context in
-            liveContent(at: context.date)
-        }
+        content(at: entry.date)
         .environment(\.calendar, beijingCalendar)
         .environment(\.timeZone, beijingTimeZone)
         .environment(\.locale, beijingLocale)
@@ -557,8 +782,14 @@ struct CountdownDesktopWidgetView: View {
     }
 
     @ViewBuilder
-    private func liveContent(at date: Date) -> some View {
-        let snap = CountdownEntryFactory.loadSnapshot(displayModeOverride: entry.displayMode)
+    private func content(at date: Date) -> some View {
+        let snap = CountdownEntryFactory.Snapshot(
+            displayMode: entry.displayMode,
+            timeUnit: entry.timeUnit,
+            item: entry.item,
+            pomodoro: entry.pomodoro,
+            pomodoroHistory: entry.pomodoroHistory
+        )
         let mode = entry.displayMode
         Group {
             if mode == "both", snap.pomodoro != nil || snap.item != nil {
@@ -592,44 +823,62 @@ struct CountdownDesktopWidgetView: View {
             }
         }
         .containerBackground(for: .widget) {
-            ZStack {
-                Color(nsColor: .windowBackgroundColor)
-                LinearGradient(
-                    colors: [accentFor(snap).opacity(0.10), .clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
+            WidgetBackdrop(accent: accentFor(snap), family: family)
         }
     }
 
     private func accentFor(_ snap: CountdownEntryFactory.Snapshot) -> Color {
         if entry.displayMode == "stopwatch" || entry.displayMode == "weekly" {
-            return Color(hex: stopwatchWidgetAccentHex)
+            return adaptiveAccent(stopwatchWidgetAccentHex)
         }
         if (entry.displayMode == "pomodoro" || entry.displayMode == "both"), let pomodoro = snap.pomodoro {
-            return Color(hex: pomodoro.isStopwatchActive ? stopwatchWidgetAccentHex : pomodoro.phase.colorHex)
+            return adaptiveAccent(
+                pomodoro.isStopwatchActive ? stopwatchWidgetAccentHex : pomodoro.phase.colorHex
+            )
         }
         if let item = snap.item {
-            return Color(hex: item.colorHex)
+            return adaptiveAccent(item.colorHex)
         }
-        return Color(hex: stopwatchWidgetAccentHex)
+        return adaptiveAccent(stopwatchWidgetAccentHex)
+    }
+
+    /// 保存数据使用稳定的 sRGB 色值；渲染时只在深色桌面上轻微提亮，
+    /// 避免青绿、靛蓝等颜色在深色墙纸上失去对比度。
+    private func adaptiveAccent(_ hex: String) -> Color {
+        let components = WidgetColorHex.components(from: hex)
+            ?? WidgetColorHex.components(from: WidgetColorHex.fallback)
+            ?? (0.17, 0.55, 0.49, 1)
+        guard colorScheme == .dark else {
+            return Color(
+                .sRGB,
+                red: components.red,
+                green: components.green,
+                blue: components.blue,
+                opacity: components.alpha
+            )
+        }
+        let lift = 0.18
+        return Color(
+            .sRGB,
+            red: components.red + (1 - components.red) * lift,
+            green: components.green + (1 - components.green) * lift,
+            blue: components.blue + (1 - components.blue) * lift,
+            opacity: components.alpha
+        )
     }
 
     private func countdownContent(_ item: SharedCountdownItem, date: Date) -> some View {
         let remaining = item.remaining(at: date)
-        let accent = Color(hex: item.colorHex)
+        let accent = adaptiveAccent(item.colorHex)
 
         return VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 12) {
             HStack {
-                Text("倒计时")
-                    .font(.caption2.weight(.medium))
-                    .tracking(0.4)
-                    .foregroundStyle(.secondary)
+                WidgetModeLabel(title: "倒计时")
                 Spacer()
                 Circle()
                     .fill(accent)
                     .frame(width: 8, height: 8)
+                    .widgetAccentable()
             }
 
             Text(item.title)
@@ -672,22 +921,21 @@ struct CountdownDesktopWidgetView: View {
             }
         }
         .padding(family == .systemSmall ? 14 : 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func stopwatchContent(_ state: SharedPomodoroState, date: Date) -> some View {
-        let accent = Color(hex: stopwatchWidgetAccentHex)
+        let accent = adaptiveAccent(stopwatchWidgetAccentHex)
         let elapsed = state.stopwatchElapsed(at: date)
 
         return VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 10) {
             HStack {
-                Label("正计时", systemImage: "stopwatch.fill")
-                    .font(.caption2.weight(.medium))
-                    .tracking(0.4)
-                    .foregroundStyle(.secondary)
+                WidgetModeLabel(title: "正计时")
                 Spacer()
                 Circle()
                     .fill(state.stopwatchRunning ? accent : Color.secondary.opacity(0.4))
                     .frame(width: 8, height: 8)
+                    .widgetAccentable()
             }
 
             Text(state.taskTitle.isEmpty ? "专注" : state.taskTitle)
@@ -699,15 +947,15 @@ struct CountdownDesktopWidgetView: View {
             Spacer(minLength: 0)
 
             if state.stopwatchRunning,
-               state.stopwatchAccumulated == 0,
                let activeStartedAt = state.stopwatchActiveStartedAt {
-                Text(activeStartedAt, style: .timer)
+                Text(activeStartedAt.addingTimeInterval(-state.stopwatchAccumulated), style: .timer)
                     .font(.system(size: family == .systemSmall ? 28 : 34, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .tracking(0.3)
                     .foregroundStyle(accent)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
+                    .widgetAccentable()
             } else {
                 Text(formatStopwatch(elapsed))
                     .font(.system(size: family == .systemSmall ? 28 : 34, weight: .semibold, design: .rounded))
@@ -716,6 +964,7 @@ struct CountdownDesktopWidgetView: View {
                     .foregroundStyle(accent)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
+                    .widgetAccentable()
             }
 
             WidgetProgressBar(
@@ -736,24 +985,23 @@ struct CountdownDesktopWidgetView: View {
             }
         }
         .padding(family == .systemSmall ? 14 : 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func countdownPomodoroContent(_ state: SharedPomodoroState, date: Date) -> some View {
         let remaining = state.remaining(at: date)
-        let accent = Color(hex: state.phase.colorHex)
+        let accent = adaptiveAccent(state.phase.colorHex)
         let phaseDuration = max(1, state.duration(for: state.phase))
         let phaseProgress = min(1, max(0, state.elapsed(at: date) / phaseDuration))
 
         return VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 10) {
             HStack {
-                Label("番茄钟", systemImage: state.phase.icon)
-                    .font(.caption2.weight(.medium))
-                    .tracking(0.4)
-                    .foregroundStyle(.secondary)
+                WidgetModeLabel(title: "番茄钟")
                 Spacer()
                 Circle()
                     .fill(state.isRunning ? accent : Color.secondary.opacity(0.4))
                     .frame(width: 8, height: 8)
+                    .widgetAccentable()
             }
 
             Text(state.taskTitle.isEmpty ? state.phase.title : state.taskTitle)
@@ -772,12 +1020,21 @@ struct CountdownDesktopWidgetView: View {
                     .foregroundStyle(accent)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
+                    .widgetAccentable()
+            } else if state.isRunning, remaining <= 0 {
+                Text("阶段结束")
+                    .font(.system(size: family == .systemSmall ? 24 : 30, weight: .semibold, design: .rounded))
+                    .foregroundStyle(accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .widgetAccentable()
             } else {
                 Text(formatPomodoro(remaining))
                     .font(.system(size: family == .systemSmall ? 28 : 34, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .tracking(0.3)
                     .foregroundStyle(accent)
+                    .widgetAccentable()
             }
 
             WidgetProgressBar(
@@ -787,7 +1044,7 @@ struct CountdownDesktopWidgetView: View {
             )
 
             HStack {
-                Text(state.phase.title)
+                Text(state.isRunning && remaining <= 0 ? "打开时隙继续" : state.phase.title)
                     .font(.caption2.weight(.medium))
                     .tracking(0.4)
                     .foregroundStyle(accent)
@@ -798,6 +1055,7 @@ struct CountdownDesktopWidgetView: View {
             }
         }
         .padding(family == .systemSmall ? 14 : 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -809,14 +1067,11 @@ struct CountdownDesktopWidgetView: View {
         let goalMinutes = max(1, state?.weeklyFocusGoalMinutes ?? 10 * 60)
         let completedMinutes = weeklyFocusDuration(state: state, history: history, at: date) / 60
         let progress = min(1, max(0, completedMinutes / Double(goalMinutes)))
-        let accent = Color(hex: stopwatchWidgetAccentHex)
+        let accent = adaptiveAccent(stopwatchWidgetAccentHex)
 
         VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 12) {
             HStack(spacing: 6) {
-                Label("本周专注", systemImage: "target")
-                    .font(.caption2.weight(.medium))
-                    .tracking(0.4)
-                    .foregroundStyle(.secondary)
+                WidgetModeLabel(title: "本周专注")
                 Spacer()
                 Text("周一至周日")
                     .font(.caption2)
@@ -830,6 +1085,7 @@ struct CountdownDesktopWidgetView: View {
                 .foregroundStyle(accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
+                .widgetAccentable()
 
             WidgetProgressBar(
                 value: progress,
@@ -855,13 +1111,15 @@ struct CountdownDesktopWidgetView: View {
             }
         }
         .padding(family == .systemSmall ? 14 : 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func modeEmptyState(icon: String, title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundStyle(Color(hex: stopwatchWidgetAccentHex))
+                .foregroundStyle(adaptiveAccent(stopwatchWidgetAccentHex))
+                .widgetAccentable()
             Text(title)
                 .font(.headline.weight(.semibold))
             Text(subtitle)
@@ -960,11 +1218,21 @@ struct CountdownDesktopWidgetView: View {
             if family == .systemMedium {
                 HStack(alignment: .top, spacing: 14) {
                     pomodoroPane(pomodoro, compact: true, date: date)
+                        .frame(maxHeight: .infinity, alignment: .top)
                     Divider()
                     countdownPane(item, compact: true, date: date)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
+            } else if family == .systemLarge {
+                VStack(alignment: .leading, spacing: 14) {
+                    pomodoroPane(pomodoro, compact: false, date: date)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    Divider()
+                    countdownPane(item, compact: false, date: date)
+                        .frame(maxHeight: .infinity, alignment: .top)
                 }
             } else {
-                VStack(alignment: .leading, spacing: compact ? 7 : 16) {
+                VStack(alignment: .leading, spacing: 7) {
                     pomodoroPane(pomodoro, compact: compact, date: date)
                     Divider()
                     countdownPane(item, compact: compact, date: date)
@@ -972,6 +1240,7 @@ struct CountdownDesktopWidgetView: View {
             }
         }
         .padding(compact ? 12 : 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -989,7 +1258,7 @@ struct CountdownDesktopWidgetView: View {
 
     @ViewBuilder
     private func stopwatchPane(_ state: SharedPomodoroState, compact: Bool, date: Date) -> some View {
-        let accent = Color(hex: stopwatchWidgetAccentHex)
+        let accent = adaptiveAccent(stopwatchWidgetAccentHex)
         let elapsed = state.stopwatchElapsed(at: date)
 
         VStack(alignment: .leading, spacing: compact ? 3 : 6) {
@@ -1003,6 +1272,7 @@ struct CountdownDesktopWidgetView: View {
                 Circle()
                     .fill(state.stopwatchRunning ? accent : Color.secondary.opacity(0.4))
                     .frame(width: 6, height: 6)
+                    .widgetAccentable()
             }
             .foregroundStyle(.secondary)
 
@@ -1012,9 +1282,8 @@ struct CountdownDesktopWidgetView: View {
 
             Group {
                 if state.stopwatchRunning,
-                   state.stopwatchAccumulated == 0,
                    let activeStartedAt = state.stopwatchActiveStartedAt {
-                    Text(activeStartedAt, style: .timer)
+                    Text(activeStartedAt.addingTimeInterval(-state.stopwatchAccumulated), style: .timer)
                 } else {
                     Text(formatStopwatch(elapsed))
                 }
@@ -1025,6 +1294,7 @@ struct CountdownDesktopWidgetView: View {
             .foregroundStyle(accent)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
+            .widgetAccentable()
 
             if !compact {
                 WidgetProgressBar(
@@ -1039,7 +1309,7 @@ struct CountdownDesktopWidgetView: View {
     }
 
     private func countdownPomodoroPane(_ state: SharedPomodoroState, compact: Bool, date: Date) -> some View {
-        let accent = Color(hex: state.phase.colorHex)
+        let accent = adaptiveAccent(state.phase.colorHex)
         let remaining = state.remaining(at: date)
         let phaseDuration = max(1, state.duration(for: state.phase))
         let phaseProgress = min(1, max(0, state.elapsed(at: date) / phaseDuration))
@@ -1054,6 +1324,7 @@ struct CountdownDesktopWidgetView: View {
                 Circle()
                     .fill(state.isRunning ? accent : Color.secondary.opacity(0.4))
                     .frame(width: 6, height: 6)
+                    .widgetAccentable()
             }
             .foregroundStyle(.secondary)
 
@@ -1064,6 +1335,8 @@ struct CountdownDesktopWidgetView: View {
             Group {
                 if state.isRunning, let endDate = state.endDate, remaining > 0 {
                     Text(endDate, style: .timer)
+                } else if state.isRunning, remaining <= 0 {
+                    Text("阶段结束")
                 } else {
                     Text(formatPomodoro(remaining))
                 }
@@ -1074,6 +1347,7 @@ struct CountdownDesktopWidgetView: View {
             .foregroundStyle(accent)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
+            .widgetAccentable()
 
             if !compact {
                 WidgetProgressBar(
@@ -1090,7 +1364,7 @@ struct CountdownDesktopWidgetView: View {
     @ViewBuilder
     private func countdownPane(_ item: SharedCountdownItem?, compact: Bool, date: Date) -> some View {
         if let item {
-            let accent = Color(hex: item.colorHex)
+            let accent = adaptiveAccent(item.colorHex)
             let remaining = item.remaining(at: date)
             VStack(alignment: .leading, spacing: compact ? 3 : 6) {
                 HStack(spacing: 4) {
@@ -1103,6 +1377,7 @@ struct CountdownDesktopWidgetView: View {
                     Circle()
                         .fill(item.pausedRemaining != nil ? Color.secondary.opacity(0.4) : accent)
                         .frame(width: 6, height: 6)
+                        .widgetAccentable()
                 }
                 .foregroundStyle(.secondary)
 
@@ -1153,7 +1428,8 @@ struct CountdownDesktopWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "timer")
                 .font(.title2)
-                .foregroundStyle(Color(red: 0.17, green: 0.55, blue: 0.49))
+                .foregroundStyle(adaptiveAccent(stopwatchWidgetAccentHex))
+                .widgetAccentable()
             Text("还没有计时内容")
                 .font(.headline.weight(.semibold))
                 .fontDesign(.default)
@@ -1189,9 +1465,10 @@ struct CountdownDesktopWidgetView: View {
         .font(.system(size: fontSize, weight: .semibold, design: .rounded))
         .monospacedDigit()
         .tracking(0.3)
-        .foregroundStyle(Color(hex: item.colorHex))
+        .foregroundStyle(adaptiveAccent(item.colorHex))
         .lineLimit(1)
         .minimumScaleFactor(minimumScaleFactor)
+        .widgetAccentable()
     }
 
     private func formatCountdown(_ remaining: TimeInterval, unit: String) -> String {
@@ -1260,8 +1537,9 @@ struct CountdownDesktopWidget: Widget {
             CountdownDesktopWidgetView(entry: entry)
         }
         .configurationDisplayName("时隙桌面小组件")
-        .description("把倒计时、专注计时，或两者同时固定在 Mac 桌面。")
+        .description("一眼查看倒计时和当前专注状态。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
@@ -1276,9 +1554,10 @@ struct ConfigurableCountdownDesktopWidget: Widget {
         ) { entry in
             CountdownDesktopWidgetView(entry: entry)
         }
-        .configurationDisplayName("时隙桌面小组件（可编辑）")
-        .description("编辑时隙组件时选择跟随时隙、番茄钟、倒计时，或两者同时显示。")
+        .configurationDisplayName("时隙 · 自定义")
+        .description("选择倒计时、番茄钟、正计时或组合视图。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
@@ -1293,8 +1572,9 @@ struct CountdownOnlyWidget: Widget {
             CountdownDesktopWidgetView(entry: entry)
         }
         .configurationDisplayName("时隙 · 倒计时")
-        .description("只显示一个倒计时目标，适合放在桌面上持续关注。")
+        .description("持续关注一个重要目标。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
@@ -1309,8 +1589,9 @@ struct StopwatchOnlyWidget: Widget {
             CountdownDesktopWidgetView(entry: entry)
         }
         .configurationDisplayName("时隙 · 正计时")
-        .description("只显示当前任务的正计时，适合记录不设上限的专注时长。")
+        .description("实时查看当前任务的累计用时。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
@@ -1325,8 +1606,9 @@ struct PomodoroOnlyWidget: Widget {
             CountdownDesktopWidgetView(entry: entry)
         }
         .configurationDisplayName("时隙 · 番茄钟")
-        .description("只显示番茄钟阶段、剩余时间和完成轮数。")
+        .description("查看当前阶段、剩余时间和完成轮数。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
@@ -1341,8 +1623,9 @@ struct WeeklyFocusGoalWidget: Widget {
             CountdownDesktopWidgetView(entry: entry)
         }
         .configurationDisplayName("时隙 · 本周专注目标")
-        .description("显示本周已完成的专注时长、目标和进度。")
+        .description("追踪本周专注时长和目标进度。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
@@ -1360,12 +1643,15 @@ struct CountdownDesktopWidgetBundle: WidgetBundle {
 
 extension Color {
     init(hex: String) {
-        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var value: UInt64 = 0
-        Scanner(string: cleaned).scanHexInt64(&value)
-        let red = Double((value >> 16) & 0xFF) / 255
-        let green = Double((value >> 8) & 0xFF) / 255
-        let blue = Double(value & 0xFF) / 255
-        self.init(red: red, green: green, blue: blue)
+        let value = WidgetColorHex.components(from: hex)
+            ?? WidgetColorHex.components(from: WidgetColorHex.fallback)
+            ?? (0.17, 0.55, 0.49, 1)
+        self.init(
+            .sRGB,
+            red: value.red,
+            green: value.green,
+            blue: value.blue,
+            opacity: value.alpha
+        )
     }
 }

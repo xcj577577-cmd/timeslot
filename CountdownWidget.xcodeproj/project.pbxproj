@@ -15,6 +15,8 @@
 		53D77F78DC18EFBC3027BBA0 /* CountdownDesktopWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 727296F4E1DD5760C12CF786 /* CountdownDesktopWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		67A083659C27DA91A742FD7A /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 920131549EA99CC5EE0F0345 /* DesignTokens.swift */; };
 		67F742A89F8D90331D195A08 /* CountdownWidgetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9794E3BC5A67F090C95DB6 /* CountdownWidgetApp.swift */; };
+		7A011E96D4804C23A9C7B001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A011E96D4804C23A9C7B003 /* PrivacyInfo.xcprivacy */; };
+		7A011E96D4804C23A9C7B002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A011E96D4804C23A9C7B004 /* PrivacyInfo.xcprivacy */; };
 		C823FE161B4DB818FBEC0389 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E74BDA7D2D588568B61AA8 /* SettingsView.swift */; };
 		F5A304B2B9D6EFD6CE474007 /* PomodoroViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFFAEED7D000E5FF113EDC0 /* PomodoroViews.swift */; };
 /* End PBXBuildFile section */
@@ -49,6 +51,8 @@
 		4C812B80D0E450617132D623 /* CountdownStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownStore.swift; sourceTree = "<group>"; };
 		727296F4E1DD5760C12CF786 /* CountdownDesktopWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CountdownDesktopWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7FDCE20B23E6595BBBF07F89 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		7A011E96D4804C23A9C7B003 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = AppBundle/PrivacyInfo.xcprivacy; sourceTree = SOURCE_ROOT; };
+		7A011E96D4804C23A9C7B004 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		920131549EA99CC5EE0F0345 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		ABFFAEED7D000E5FF113EDC0 /* PomodoroViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroViews.swift; sourceTree = "<group>"; };
 		CD5994A710D6FC32F610D00A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -79,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				2AA6974B8AE435CA1FF36B91 /* CountdownDesktopWidget.swift */,
+				7A011E96D4804C23A9C7B004 /* PrivacyInfo.xcprivacy */,
 			);
 			path = WidgetExtension;
 			sourceTree = "<group>";
@@ -97,6 +102,7 @@
 			children = (
 				0489B3832BE929D8BC1F0A7B /* AppEntry.swift */,
 				CD5994A710D6FC32F610D00A /* Assets.xcassets */,
+				7A011E96D4804C23A9C7B003 /* PrivacyInfo.xcprivacy */,
 				4C812B80D0E450617132D623 /* CountdownStore.swift */,
 				FF9794E3BC5A67F090C95DB6 /* CountdownWidgetApp.swift */,
 				920131549EA99CC5EE0F0345 /* DesignTokens.swift */,
@@ -115,6 +121,7 @@
 			buildConfigurationList = 8F3679E1F34185D46DC5B80B /* Build configuration list for PBXNativeTarget "CountdownDesktopWidget" */;
 			buildPhases = (
 				200C24BD4B40E3769071E3A2 /* Sources */,
+				7A011E96D4804C23A9C7B005 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -187,11 +194,20 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		7A011E96D4804C23A9C7B005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A011E96D4804C23A9C7B002 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		75FE67D0752C91780B9CCB8C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				15911B6EA14035724FB802C1 /* Assets.xcassets in Resources */,
+				7A011E96D4804C23A9C7B001 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -236,11 +252,11 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 49;
+				CURRENT_PROJECT_VERSION = 50;
 				DEVELOPMENT_TEAM = 4FKFDX48HX;
 				GENERATE_INFOPLIST_FILE = NO;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.1.0;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};
@@ -268,11 +284,11 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 49;
+				CURRENT_PROJECT_VERSION = 50;
 				DEVELOPMENT_TEAM = 4FKFDX48HX;
 				GENERATE_INFOPLIST_FILE = NO;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.1.0;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};
