@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# SwiftPM 构建缓存
+.build/
+
+# Xcode 用户状态
+*.xcuserstate
+xcuserdata/
+
+# 发布产物（需要时用 xcodebuild 重新生成，或从 GitHub Releases 下载）
+outputs/*.zip
+outputs/*.dmg
+outputs/*.app
+
+# 本地备份（旧版本）
+work/
+
+# 构建临时目录
+/tmp/xianz-*

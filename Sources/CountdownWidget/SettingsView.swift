@@ -1,0 +1,327 @@
+import SwiftUI
+
+/// 应用内设置页：提醒、桌面小组件偏好、番茄钟节奏、数据与关于。
+/// 系统「设置…」（⌘,）里另有一个精简版，保留 macOS 习惯入口。
+struct AppSettingsPage: View {
+    @ObservedObject var store: CountdownStore
+    @State private var showingPomodoroSettings = false
+    @State private var showingClearHistoryConfirmation = false
+
+    private var accent: Color { store.accentPreset.color }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.xl) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("设置")
+                        .font(AppType.pageTitle())
+                        .tracking(Tracking.pageTitle)
+                    Text("提醒、小组件与专注节奏")
+                        .font(AppType.ui(Typo.footnote))
+                        .foregroundStyle(.secondary)
+                }
+
+                settingsCard(title: "提醒", icon: "bell.badge") {
+                    Toggle(isOn: notificationsBinding) {
+                        settingLabel(title: "通知提醒", subtitle: "倒计时到达和番茄钟阶段结束时通知")
+                    }
+                    .toggleStyle(.switch)
+                    .tint(accent)
+
+                    Divider()
+
+                    Toggle(isOn: soundsBinding) {
+                        settingLabel(title: "提示音", subtitle: "应用内播放阶段结束提示音")
+                    }
+                    .toggleStyle(.switch)
+                    .tint(accent)
+                }
+
+                settingsCard(title: "外观", icon: "circle.lefthalf.filled") {
+                    TimeSlotSegmentedControl(
+                        options: AppAppearance.allCases.map {
+                            SegmentOption(id: $0.rawValue, title: $0.title, value: $0)
+                        },
+                        selection: appearanceBinding,
+                        tint: accent
+                    )
+                    .font(AppType.ui(Typo.footnote, .medium))
+
+                    Divider()
+
+                    Text("强制浅色或深色后，颜色预设会自动切换到对应档位；桌面小组件仍跟随系统外观。")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(2)
+                }
+
+                settingsCard(title: "颜色", icon: "paintpalette") {
+                    HStack(spacing: Space.l) {
+                        ForEach(ColorPreset.allCases) { preset in
+                            Button {
+                                store.accentPreset = preset
+                            } label: {
+                                VStack(spacing: Space.s) {
+                                    Circle()
+                                        .fill(preset.color)
+                                        .frame(width: 30, height: 30)
+                                        .overlay(
+                                            Circle().stroke(Color.primary.opacity(0.16), lineWidth: 1)
+                                        )
+                                        .overlay {
+                                            if store.accentPreset == preset {
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .foregroundStyle(.white)
+                                                    .shadow(color: .black.opacity(0.3), radius: 1)
+                                            }
+                                        }
+                                    Text(preset.title)
+                                        .font(AppType.caption())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(TimeSlotPressableStyle())
+                            .contentShape(Rectangle())
+                            .help(preset.title)
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    Divider()
+
+                    Text("预设同时适配浅色与深色模式，改动立即生效。")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(2)
+                }
+
+                settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
+                    pickerRow(
+                        label: "内容",
+                        systemImage: "rectangle.split.2x1",
+                        binding: widgetDisplayModeBinding
+                    ) {
+                        ForEach(WidgetDisplayMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+
+                    Divider()
+
+                    pickerRow(
+                        label: "单位",
+                        systemImage: "textformat.123",
+                        binding: widgetTimeUnitBinding
+                    ) {
+                        Text("仅天数").tag("days")
+                        Text("自动").tag("auto")
+                        Text("仅小时").tag("hours")
+                        Text("精细").tag("precise")
+                    }
+
+                    Divider()
+
+                    Text("偏好会立即同步到桌面小组件，最长 1 分钟自动刷新一次。")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(2)
+                }
+
+                settingsCard(title: "番茄钟节奏", icon: "timer") {
+                    HStack {
+                        settingLabel(
+                            title: "当前节奏",
+                            subtitle: rhythmSummary
+                        )
+                        Spacer()
+                        Button("调整…") {
+                            showingPomodoroSettings = true
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(accent)
+                    }
+                }
+
+                settingsCard(title: "数据", icon: "externaldrive") {
+                    HStack {
+                        settingLabel(
+                            title: "阶段记录",
+                            subtitle: "共 \(store.pomodoroHistory.count) 条，不足 10 秒的记录不会保留"
+                        )
+                        Spacer()
+                        Button("清空…", role: .destructive) {
+                            showingClearHistoryConfirmation = true
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                settingsCard(title: "关于", icon: "info.circle") {
+                    HStack {
+                        settingLabel(
+                            title: "时隙",
+                            subtitle: appVersionText
+                        )
+                        Spacer()
+                        Text("非 App Store 版本")
+                            .font(AppType.caption(weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, Space.xxl)
+            .padding(.top, Space.xxl)
+            .padding(.bottom, Space.xxl)
+            .frame(maxWidth: 760, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Surface.canvas)
+        .sheet(isPresented: $showingPomodoroSettings) {
+            PomodoroSettingsView(state: store.pomodoro, accent: store.accentPreset.color) { focus, shortBreak, longBreak, rounds, weeklyGoalHours in
+                store.updatePomodoroSettings(
+                    focusMinutes: focus,
+                    shortBreakMinutes: shortBreak,
+                    longBreakMinutes: longBreak,
+                    roundsBeforeLongBreak: rounds,
+                    weeklyFocusGoalMinutes: weeklyGoalHours * 60
+                )
+            }
+        }
+        .alert("清空全部阶段记录？", isPresented: $showingClearHistoryConfirmation) {
+            Button("清空全部", role: .destructive) {
+                store.clearPomodoroHistory()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("这会删除所有番茄钟和正计时历史记录，且无法撤销。当前计时和任务不会受影响。")
+                .lineSpacing(2.5)
+        }
+    }
+
+    private func settingsCard<Content: View>(
+        title: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            // 系统设置风格：圆角图标块 + 小节标题
+            HStack(spacing: Space.s) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(accent)
+                    .frame(width: 26, height: 26)
+                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                Text(title)
+                    .font(AppType.ui(Typo.body, .medium))
+                    .tracking(Tracking.heading)
+            }
+            content()
+        }
+        .padding(Space.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface(
+            cornerRadius: Radius.medium,
+            borderOpacity: 0.07,
+            shadowRadius: 8,
+            shadowY: 2
+        )
+    }
+
+    private func settingLabel(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(AppType.ui(Typo.footnote, .medium))
+            Text(subtitle)
+                .font(AppType.caption())
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+    }
+
+    private func pickerRow<SelectionValue: Hashable, Content: View>(
+        label: String,
+        systemImage: String,
+        binding: Binding<SelectionValue>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: Space.s) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(accent)
+                .frame(width: 24, height: 24)
+                .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            Text(label)
+                .font(AppType.ui(Typo.footnote, .medium))
+            Spacer()
+            Picker(label, selection: binding) {
+                content()
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 110)
+        }
+    }
+
+    private var notificationsBinding: Binding<Bool> {
+        Binding(
+            get: { store.notificationsEnabled },
+            set: { store.setNotificationsEnabled($0) }
+        )
+    }
+
+    private var soundsBinding: Binding<Bool> {
+        Binding(
+            get: { store.soundsEnabled },
+            set: { store.setSoundsEnabled($0) }
+        )
+    }
+
+    private var appearanceBinding: Binding<AppAppearance> {
+        Binding(
+            get: { store.appearanceMode },
+            set: { newValue in
+                guard newValue != store.appearanceMode else { return }
+                store.appearanceMode = newValue
+            }
+        )
+    }
+
+    /// macOS 的 Picker 会在自身更新周期里回写 selection，
+    /// 直接绑定 @Published 可能触发 “Publishing changes from within view updates”，
+    /// 延迟到下一轮主队列更新 Store。
+    private var widgetDisplayModeBinding: Binding<WidgetDisplayMode> {
+        Binding(
+            get: { store.widgetDisplayMode },
+            set: { newValue in
+                guard newValue != store.widgetDisplayMode else { return }
+                DispatchQueue.main.async {
+                    store.widgetDisplayMode = newValue
+                }
+            }
+        )
+    }
+
+    private var widgetTimeUnitBinding: Binding<String> {
+        Binding(
+            get: { store.widgetTimeUnit },
+            set: { newValue in
+                guard newValue != store.widgetTimeUnit else { return }
+                DispatchQueue.main.async {
+                    store.widgetTimeUnit = newValue
+                }
+            }
+        )
+    }
+
+    private var rhythmSummary: String {
+        let state = store.pomodoro
+        return "\(state.focusMinutes) 分钟专注 · \(state.shortBreakMinutes) 分钟短休息 · 每 \(state.roundsBeforeLongBreak) 轮进入 \(state.longBreakMinutes) 分钟长休息 · 周目标 \(max(1, state.weeklyFocusGoalMinutes / 60)) 小时"
+    }
+
+    private var appVersionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        return "版本 \(version) (\(build))"
+    }
+}
