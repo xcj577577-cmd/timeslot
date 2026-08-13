@@ -46,6 +46,15 @@ requireText("widget settings", "桌面小组件");
 await sky.click({ app, element_index: indexForIdentifier("timeslot.segment.pomodoro") });
 state = await sky.get_app_state({ app, disableDiff: true });
 requireText("pomodoro page", "番茄钟");
-requireText("history card", "阶段记录");
+requireText("pomodoro focus workspace", "当前任务");
+
+var insightsIndex = state.text.match(/(\d+) 按钮[^\n]*ID: timeslot\.segment\.pomodoro\.insights/);
+if (!insightsIndex) {
+    throw new Error("pomodoro insights control is not exposed to accessibility");
+}
+await sky.click({ app, element_index: Number(insightsIndex[1]) });
+state = await sky.get_app_state({ app, disableDiff: true });
+requireText("pomodoro insights workspace", "阶段记录");
+requireText("history filter", "查看时间范围");
 
 nodeRepl.write("时隙 UI 冒烟测试通过：启动、帮助菜单、设置、通知状态、番茄钟与阶段记录均可访问。\n");

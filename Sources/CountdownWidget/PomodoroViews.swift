@@ -11,6 +11,27 @@ struct PomodoroView: View {
         var id: String { rawValue }
     }
 
+    private enum Workspace: String, CaseIterable, Identifiable {
+        case focus
+        case insights
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .focus: return "专注"
+            case .insights: return "统计"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .focus: return "timer"
+            case .insights: return "chart.xyaxis.line"
+            }
+        }
+    }
+
     @ObservedObject var store: CountdownStore
     let onSyncWidget: () -> Void
     @State private var presentedSheet: PresentedSheet?
@@ -21,6 +42,7 @@ struct PomodoroView: View {
     @State private var showingClearHistoryConfirmation = false
     @State private var showingResetConfirmation = false
     @State private var timerMode: PomodoroTimerMode
+    @State private var workspace: Workspace = .focus
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(store: CountdownStore, onSyncWidget: @escaping () -> Void) {
@@ -204,14 +226,22 @@ struct PomodoroView: View {
             .padding(.top, Space.xxl)
             .padding(.bottom, Space.l)
 
-            ScrollView {
-                VStack(spacing: Space.xl) {
-                    focusWorkspace
-                    historyCard
-                }
-                .padding(.horizontal, Space.xxl)
-                .padding(.bottom, Space.xxl)
-            }
+            TimeSlotSegmentedControl(
+                options: Workspace.allCases.map {
+                    SegmentOption(
+                        id: "pomodoro.\($0.id)",
+                        title: $0.title,
+                        systemImage: $0.systemImage,
+                        value: $0
+                    )
+                },
+                selection: $workspace,
+                tint: timerMode == .stopwatch ? stopwatchColor : phaseColor
+            )
+            .padding(.horizontal, Space.xxl)
+            .padding(.bottom, Space.l)
+
+            workspaceContent
         }
         .background(
             LinearGradient(
@@ -270,6 +300,26 @@ struct PomodoroView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openPomodoroSettingsRequested)) { _ in
             presentedSheet = .settings
+        }
+    }
+
+    @ViewBuilder
+    private var workspaceContent: some View {
+        switch workspace {
+        case .focus:
+            ScrollView {
+                focusWorkspace
+                    .padding(.horizontal, Space.xxl)
+                    .padding(.bottom, Space.xxl)
+            }
+            .accessibilityIdentifier("timeslot.pomodoro.focus-workspace")
+        case .insights:
+            ScrollView {
+                historyCard
+                    .padding(.horizontal, Space.xxl)
+                    .padding(.bottom, Space.xxl)
+            }
+            .accessibilityIdentifier("timeslot.pomodoro.insights-workspace")
         }
     }
 
