@@ -1,7 +1,8 @@
+import AppKit
 import SwiftUI
 
 /// 应用内设置页：提醒、桌面小组件偏好、番茄钟节奏、数据与关于。
-/// 系统「设置…」（⌘,）里另有一个精简版，保留 macOS 习惯入口。
+/// 系统「设置…」（⌘,）与应用内设置共用这一页，避免两套设置逻辑漂移。
 struct AppSettingsPage: View {
     @ObservedObject var store: CountdownStore
     @State private var showingPomodoroSettings = false
@@ -30,6 +31,8 @@ struct AppSettingsPage: View {
                     }
                     .toggleStyle(.switch)
                     .tint(accent)
+
+                    notificationPermissionStatus
 
                     Divider()
 
@@ -216,6 +219,12 @@ struct AppSettingsPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Surface.canvas)
+        .onAppear {
+            store.refreshNotificationPermissionStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshNotificationPermissionStatus()
+        }
         .sheet(isPresented: $showingPomodoroSettings) {
             PomodoroSettingsView(state: store.pomodoro, accent: store.accentPreset.color) { focus, shortBreak, longBreak, rounds, weeklyGoalHours in
                 store.updatePomodoroSettings(
@@ -233,7 +242,7 @@ struct AppSettingsPage: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("这会删除所有番茄钟和正计时历史记录，且无法撤销。当前计时和任务不会受影响。")
+            Text("这会删除所有番茄钟和正计时历史记录；清空后可在 8 秒内撤销。当前计时和任务不会受影响。")
                 .lineSpacing(2.5)
         }
         .alert(
@@ -343,6 +352,63 @@ struct AppSettingsPage: View {
             get: { store.soundsEnabled },
             set: { store.setSoundsEnabled($0) }
         )
+    }
+
+    private var notificationPermissionStatus: some View {
+        let permission = store.notificationPermissionState
+        return HStack(alignment: .top, spacing: Space.s) {
+            Image(systemName: permission.systemImage)
+                .font(AppType.ui(Typo.body, .medium))
+                .foregroundStyle(notificationPermissionTint(for: permission))
+                .frame(width: 28, height: 28)
+                .background(
+                    notificationPermissionTint(for: permission).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(permission.title)
+                    .font(AppType.ui(Typo.footnote, .medium))
+                Text(permission.detail)
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: Space.s)
+
+            switch permission {
+            case .notDetermined:
+                Button("允许通知") {
+                    store.requestNotificationPermission()
+                }
+                .buttonStyle(.bordered)
+                .tint(accent)
+                .controlSize(.small)
+            case .denied:
+                Button("打开系统设置") {
+                    store.openNotificationSettings()
+                }
+                .buttonStyle(.bordered)
+                .tint(accent)
+                .controlSize(.small)
+            case .checking:
+                ProgressView()
+                    .controlSize(.small)
+            case .authorized, .provisional:
+                EmptyView()
+            }
+        }
+        .padding(Space.m)
+        .background(Surface.nested, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+    }
+
+    private func notificationPermissionTint(for state: NotificationPermissionState) -> Color {
+        switch state {
+        case .authorized, .provisional: return accent
+        case .denied: return .orange
+        case .checking, .notDetermined: return .secondary
+        }
     }
 
     private var appearanceBinding: Binding<AppAppearance> {

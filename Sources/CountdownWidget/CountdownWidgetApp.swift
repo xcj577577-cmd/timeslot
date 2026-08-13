@@ -110,6 +110,17 @@ struct ContentView: View {
         // 系统字形负责界面阅读，计时数字在 AppType.timer 中单独使用圆体。
         .fontDesign(.default)
         .background(Surface.canvas)
+        .overlay(alignment: .bottomTrailing) {
+            if let action = store.undoableAction {
+                UndoBanner(action: action, accent: accent) {
+                    store.undoLastAction()
+                }
+                .padding(.trailing, Space.xl)
+                .padding(.bottom, Space.xl)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: store.undoableAction)
         .sheet(isPresented: $showingAdd) {
             CountdownEditor(mode: .add) { title, date, color in
                 store.add(title: title, targetDate: date, colorHex: color)
@@ -160,7 +171,7 @@ struct ContentView: View {
             }
             Button("取消", role: .cancel) { pendingDelete = nil }
         } message: {
-            Text("删除后无法恢复。桌面小组件会自动切换显示其他倒计时。")
+            Text("删除后可在 8 秒内撤销。桌面小组件会自动切换显示其他倒计时。")
                 .lineSpacing(2.5)
         }
     }
@@ -763,6 +774,36 @@ struct ContentView: View {
         showingWidgetHelp = true
     }
 
+}
+
+struct UndoBanner: View {
+    let action: UndoableStoreAction
+    let accent: Color
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: Space.m) {
+            Image(systemName: "arrow.uturn.backward.circle.fill")
+                .font(AppType.ui(Typo.body, .medium))
+                .foregroundStyle(accent)
+
+            Text(action.message)
+                .font(AppType.ui(Typo.footnote, .medium))
+                .lineLimit(1)
+
+            Button("撤销", action: onUndo)
+                .buttonStyle(.borderedProminent)
+                .tint(accent)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.s)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(accent.opacity(0.2), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(action.message)
+    }
 }
 
 

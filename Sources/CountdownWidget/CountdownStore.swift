@@ -51,6 +51,8 @@ final class CountdownStore: ObservableObject {
         }
     }
     @Published private(set) var widgetSyncState: WidgetSyncState = .checking
+    @Published private(set) var notificationPermissionState: NotificationPermissionState = .checking
+    @Published private(set) var undoableAction: UndoableStoreAction? = nil
 
     private var timerCancellable: AnyCancellable?
     private var widgetReloadTask: DispatchWorkItem?
@@ -67,6 +69,17 @@ final class CountdownStore: ObservableObject {
     private var countdownCompletionPlayed: Set<UUID> = []
     /// 通知权限是否已授予；授予后由系统通知负责响铃，未授予时应用内播放提示音兜底。
     private var notificationPermissionGranted = false
+    private struct CountdownDeletionSnapshot {
+        let item: CountdownItem
+        let index: Int
+        let selectedID: UUID?
+        let promotedPinID: UUID?
+        let promotedPinValue: Bool
+    }
+    private var countdownDeletionSnapshot: CountdownDeletionSnapshot?
+    private var pomodoroHistoryDeletionSnapshot: [PomodoroSessionRecord]?
+    private var undoExpirationTask: Task<Void, Never>?
+    private var undoGeneration = 0
     /// 已排入系统队列的番茄钟阶段通知 id，暂停/重置/停顿时按 id 精确取消，不误删倒计时通知。
     private var pendingPomodoroNotificationIDs: Set<String> = []
     /// 通知队列查询是异步的。用代次丢弃较早的重建任务，避免快速编辑/删除时
@@ -215,6 +228,22 @@ final class CountdownStore: ObservableObject {
         notificationsEnabled = enabled
     }
 
+    func refreshNotificationPermissionStatus() {
+        updateNotificationPermission(requestIfNeeded: false)
+    }
+
+    func requestNotificationPermission() {
+        updateNotificationPermission(requestIfNeeded: true, forceRequest: true)
+    }
+
+    func openNotificationSettings() {
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.xianz.countdownwidget"
+        let urlString = "x-apple.systempreferences:com.apple.Notifications-Settings?bundleID=\(bundleID)"
+        guard let url = URL(string: urlString) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        NSWorkspace.shared.open(url)
+    }
+
     func setSoundsEnabled(_ enabled: Bool) {
         soundsEnabled = enabled
         rescheduleAllNotifications()
@@ -355,7 +384,7 @@ final class CountdownStore: ObservableObject {
         persistSharedStateWithoutWidgetReload()
         savePomodoroHistory()
         savePomodoroTasks()
-        requestNotificationPermissionIfNeeded()
+        updateNotificationPermission(requestIfNeeded: true)
         rescheduleCountdownNotifications()
         // 启动后主动刷新一次桌面组件：系统可能仍保留着更新前启动的扩展进程，
         // 让组件尽早按最新共享数据重新生成，而不是继续展示旧快照。
@@ -410,15 +439,31 @@ final class CountdownStore: ObservableObject {
     }
 
     func delete(_ item: CountdownItem) {
-        items.removeAll { $0.id == item.id }
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        let selectedBeforeDeletion = selectedID
+        items.remove(at: index)
         countdownCompletionPlayed.remove(item.id)
+        var promotedPinID: UUID?
+        var promotedPinValue = false
         if !items.isEmpty, !items.contains(where: { $0.isPinned }) {
+            promotedPinID = items[0].id
+            promotedPinValue = items[0].isPinned
             items[0].isPinned = true
         }
         if selectedID == item.id {
             selectedID = items.first?.id
         }
         rescheduleCountdownNotifications()
+        offerUndo(
+            .countdownDeleted(title: item.title),
+            countdownSnapshot: CountdownDeletionSnapshot(
+                item: item,
+                index: index,
+                selectedID: selectedBeforeDeletion,
+                promotedPinID: promotedPinID,
+                promotedPinValue: promotedPinValue
+            )
+        )
     }
 
     func selectForDesktopWidget(_ item: CountdownItem) {
@@ -777,7 +822,83 @@ final class CountdownStore: ObservableObject {
     }
 
     func clearPomodoroHistory() {
+        guard !pomodoroHistory.isEmpty else { return }
+        let snapshot = pomodoroHistory
         pomodoroHistory.removeAll()
+        offerUndo(
+            .pomodoroHistoryCleared(count: snapshot.count),
+            historySnapshot: snapshot
+        )
+    }
+
+    func undoLastAction() {
+        guard let action = undoableAction else { return }
+        switch action {
+        case .countdownDeleted:
+            guard let snapshot = countdownDeletionSnapshot,
+                  !items.contains(where: { $0.id == snapshot.item.id }) else {
+                clearUndoState()
+                return
+            }
+            let insertionIndex = min(max(snapshot.index, 0), items.count)
+            items.insert(snapshot.item, at: insertionIndex)
+            if let promotedPinID = snapshot.promotedPinID,
+               let promotedIndex = items.firstIndex(where: { $0.id == promotedPinID }) {
+                items[promotedIndex].isPinned = snapshot.promotedPinValue
+            }
+            if let selectedID = snapshot.selectedID {
+                self.selectedID = items.contains(where: { $0.id == selectedID })
+                    ? selectedID
+                    : items.first?.id
+            } else {
+                self.selectedID = nil
+            }
+            countdownCompletionPlayed.remove(snapshot.item.id)
+            rescheduleCountdownNotifications()
+
+        case .pomodoroHistoryCleared:
+            guard let snapshot = pomodoroHistoryDeletionSnapshot else {
+                clearUndoState()
+                return
+            }
+            var restored = pomodoroHistory
+            let existingIDs = Set(restored.map(\.id))
+            restored.append(contentsOf: snapshot.filter { !existingIDs.contains($0.id) })
+            pomodoroHistory = restored.sorted { lhs, rhs in
+                lhs.endedAt > rhs.endedAt
+            }
+        }
+        clearUndoState()
+    }
+
+    private func offerUndo(
+        _ action: UndoableStoreAction,
+        countdownSnapshot: CountdownDeletionSnapshot? = nil,
+        historySnapshot: [PomodoroSessionRecord]? = nil
+    ) {
+        clearUndoState()
+        undoableAction = action
+        countdownDeletionSnapshot = countdownSnapshot
+        pomodoroHistoryDeletionSnapshot = historySnapshot
+        let generation = undoGeneration
+        undoExpirationTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 8_000_000_000)
+            } catch {
+                return
+            }
+            guard let self, self.undoGeneration == generation else { return }
+            self.clearUndoState()
+        }
+    }
+
+    private func clearUndoState() {
+        undoExpirationTask?.cancel()
+        undoExpirationTask = nil
+        countdownDeletionSnapshot = nil
+        pomodoroHistoryDeletionSnapshot = nil
+        undoableAction = nil
+        undoGeneration &+= 1
     }
 
     func refreshDesktopWidgets() {
@@ -1162,25 +1283,38 @@ final class CountdownStore: ObservableObject {
     }
 
     private func requestNotificationPermissionIfNeeded() {
+        updateNotificationPermission(requestIfNeeded: true)
+    }
+
+    private func updateNotificationPermission(requestIfNeeded: Bool, forceRequest: Bool = false) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
             switch settings.authorizationStatus {
             case .notDetermined:
+                self.notificationPermissionState = .notDetermined
+                guard requestIfNeeded || forceRequest else { return }
                 let hasActiveTimer = self.items.contains { item in
                     CountdownNotificationPolicy.shouldSchedule(item: item, at: Date())
                 } || self.pomodoro.isRunning
-                guard hasActiveTimer else { return }
+                guard forceRequest || hasActiveTimer else { return }
                 let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+                self.notificationPermissionState = granted ? .authorized : .denied
                 self.notificationPermissionGranted = granted
-                if granted {
-                    self.rescheduleAllNotifications()
-                }
+                if granted { self.rescheduleAllNotifications() }
             case .authorized, .provisional, .ephemeral:
+                let state: NotificationPermissionState = settings.authorizationStatus == .provisional
+                    ? .provisional
+                    : .authorized
+                self.notificationPermissionState = state
                 self.notificationPermissionGranted = true
                 self.rescheduleAllNotifications()
+            case .denied:
+                self.notificationPermissionState = .denied
+                self.notificationPermissionGranted = false
             default:
+                self.notificationPermissionState = .denied
                 self.notificationPermissionGranted = false
             }
         }

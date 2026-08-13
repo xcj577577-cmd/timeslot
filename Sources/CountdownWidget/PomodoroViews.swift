@@ -248,8 +248,8 @@ struct PomodoroView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("这会删除所有番茄钟历史记录，且无法撤销。当前计时和任务不会受影响。")
-            .lineSpacing(2.5)
+            Text("这会删除所有番茄钟和正计时历史记录；清空后可在 8 秒内撤销。当前计时和任务不会受影响。")
+                .lineSpacing(2.5)
         }
         .alert("重置当前计时？", isPresented: $showingResetConfirmation) {
             Button("重置", role: .destructive) {

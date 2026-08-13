@@ -132,6 +132,55 @@ enum CountdownNotificationPolicy {
     }
 }
 
+enum NotificationPermissionState: Equatable {
+    case checking
+    case notDetermined
+    case authorized
+    case provisional
+    case denied
+
+    var title: String {
+        switch self {
+        case .checking: return "正在检查系统通知权限"
+        case .notDetermined: return "尚未允许系统通知"
+        case .authorized: return "系统通知已允许"
+        case .provisional: return "系统通知已临时允许"
+        case .denied: return "系统通知已关闭"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .checking: return "正在读取 macOS 的通知设置"
+        case .notDetermined: return "允许后，倒计时和番茄钟才能在后台提醒你"
+        case .authorized: return "倒计时和番茄钟可以在后台提醒你"
+        case .provisional: return "通知可能以较低打扰方式显示"
+        case .denied: return "请在系统设置中重新打开时隙的通知"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .checking: return "ellipsis.circle"
+        case .notDetermined: return "bell.badge"
+        case .authorized, .provisional: return "checkmark.circle.fill"
+        case .denied: return "bell.slash"
+        }
+    }
+}
+
+enum UndoableStoreAction: Equatable {
+    case countdownDeleted(title: String)
+    case pomodoroHistoryCleared(count: Int)
+
+    var message: String {
+        switch self {
+        case .countdownDeleted(let title): return "已删除「\(title)」"
+        case .pomodoroHistoryCleared(let count): return "已清空 \(count) 条阶段记录"
+        }
+    }
+}
+
 /// 时隙只管理自己的通知标识；清理旧请求时不能误删其他应用或未来系统请求。
 enum TimeSlotNotificationIdentifier {
     static let pomodoroPhaseEnd = "pomodoro.phase.end"
