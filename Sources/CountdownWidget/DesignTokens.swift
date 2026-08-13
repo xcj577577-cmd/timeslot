@@ -397,6 +397,7 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
                 .buttonStyle(TimeSlotPressableStyle())
                 .contentShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
                 .accessibilityLabel(option.title)
+                .accessibilityIdentifier("timeslot.segment.\(option.id)")
                 .accessibilityValue(isSelected ? "已选中" : "未选中")
             }
         }

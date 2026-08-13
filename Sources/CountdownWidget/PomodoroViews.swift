@@ -191,12 +191,14 @@ struct PomodoroView: View {
                     Label("任务", systemImage: "checklist")
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("timeslot.pomodoro.tasks")
 
                 Button(action: onSyncWidget) {
                     Label("设为小组件内容", systemImage: "rectangle.3.group")
                 }
                 .buttonStyle(.bordered)
                 .tint(phaseColor)
+                .accessibilityIdentifier("timeslot.pomodoro.widget-sync")
             }
             .padding(.horizontal, Space.xxl)
             .padding(.top, Space.xxl)
@@ -573,6 +575,7 @@ struct PomodoroView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 .help(isTimerActive ? "重置会清除当前计时" : "重置计时")
+                .accessibilityIdentifier("timeslot.pomodoro.reset")
 
                 Button {
                     withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75)) {
@@ -602,6 +605,7 @@ struct PomodoroView: View {
                     x: 0,
                     y: 4
                 )
+                .accessibilityIdentifier("timeslot.pomodoro.start-pause")
 
                 Button {
                     withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7)) {
@@ -618,6 +622,7 @@ struct PomodoroView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 .tint(timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                .accessibilityIdentifier("timeslot.pomodoro.stop")
                 .disabled(
                     timerMode == .stopwatch
                         ? !state.isStopwatchActive
@@ -772,6 +777,7 @@ struct PomodoroView: View {
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("timeslot.pomodoro.history.clear")
                 }
             }
 

@@ -31,6 +31,7 @@ struct AppSettingsPage: View {
                     }
                     .toggleStyle(.switch)
                     .tint(accent)
+                    .accessibilityIdentifier("timeslot.settings.notifications.toggle")
 
                     notificationPermissionStatus
 
@@ -41,6 +42,7 @@ struct AppSettingsPage: View {
                     }
                     .toggleStyle(.switch)
                     .tint(accent)
+                    .accessibilityIdentifier("timeslot.settings.sounds.toggle")
                 }
 
                 settingsCard(title: "外观", icon: "circle.lefthalf.filled") {
@@ -153,6 +155,7 @@ struct AppSettingsPage: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .accessibilityIdentifier("timeslot.settings.widget.refresh")
                     }
                 }
 
@@ -168,6 +171,7 @@ struct AppSettingsPage: View {
                         }
                         .buttonStyle(.bordered)
                         .tint(accent)
+                        .accessibilityIdentifier("timeslot.settings.pomodoro.edit")
                     }
                 }
 
@@ -182,6 +186,7 @@ struct AppSettingsPage: View {
                             showingClearHistoryConfirmation = true
                         }
                         .buttonStyle(.bordered)
+                        .accessibilityIdentifier("timeslot.settings.history.clear")
                     }
 
                     Divider()
@@ -194,8 +199,10 @@ struct AppSettingsPage: View {
                         Spacer(minLength: Space.m)
                         Button("导出…") { exportBackup() }
                             .buttonStyle(.bordered)
+                            .accessibilityIdentifier("timeslot.settings.backup.export")
                         Button("导入…") { chooseImportBackup() }
                             .buttonStyle(.bordered)
+                            .accessibilityIdentifier("timeslot.settings.backup.import")
                     }
                 }
 
@@ -385,6 +392,7 @@ struct AppSettingsPage: View {
                 .buttonStyle(.bordered)
                 .tint(accent)
                 .controlSize(.small)
+                .accessibilityIdentifier("timeslot.settings.notifications.allow")
             case .denied:
                 Button("打开系统设置") {
                     store.openNotificationSettings()
@@ -392,6 +400,7 @@ struct AppSettingsPage: View {
                 .buttonStyle(.bordered)
                 .tint(accent)
                 .controlSize(.small)
+                .accessibilityIdentifier("timeslot.settings.notifications.open-system")
             case .checking:
                 ProgressView()
                     .controlSize(.small)

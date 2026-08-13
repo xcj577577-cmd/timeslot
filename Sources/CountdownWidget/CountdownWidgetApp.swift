@@ -204,6 +204,7 @@ struct ContentView: View {
                     .tint(accent)
                     .help("新建倒计时")
                     .accessibilityLabel("新建倒计时")
+                    .accessibilityIdentifier("timeslot.countdown.add")
                 }
             }
             .padding(.horizontal, Space.xl)
@@ -240,6 +241,7 @@ struct ContentView: View {
                         .textFieldStyle(.plain)
                         .font(AppType.ui(Typo.body))
                         .focused($searchFieldFocused)
+                        .accessibilityIdentifier("timeslot.countdown.search")
                     if !searchText.isEmpty {
                         Button {
                             searchText = ""
@@ -312,6 +314,7 @@ struct ContentView: View {
                                 ) {
                                     store.selectedID = item.id
                                 }
+                                .accessibilityIdentifier("timeslot.countdown.row.\(item.id.uuidString)")
                                 .simultaneousGesture(
                                     TapGesture(count: 2).onEnded {
                                         store.selectedID = item.id
@@ -329,9 +332,10 @@ struct ContentView: View {
                                     Button(item.isPaused ? "继续" : "暂停") {
                                         store.togglePause(item)
                                     }
-                                    Button("删除", role: .destructive) {
-                                        pendingDelete = item
-                                    }
+                Button("删除", role: .destructive) {
+                    pendingDelete = item
+                }
+                .accessibilityIdentifier("timeslot.countdown.context-delete.\(item.id.uuidString)")
                                 }
                             }
                         }
@@ -362,6 +366,7 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .tint(accent)
                     .disabled(store.selectedItem == nil)
+                    .accessibilityIdentifier("timeslot.widget.sync")
                 }
                 .padding(Space.l)
                 .cardSurface()
@@ -395,6 +400,7 @@ struct ContentView: View {
             .buttonStyle(TimeSlotPressableStyle())
             .contentShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
             .accessibilityLabel("设置")
+            .accessibilityIdentifier("timeslot.settings.open")
             .accessibilityValue(selectedSection == .settings ? "已选中" : "未选中")
             .padding(.horizontal, Space.m)
             .padding(.bottom, Space.m)
@@ -607,6 +613,7 @@ struct ContentView: View {
                         Label("编辑", systemImage: "slider.horizontal.3")
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityIdentifier("timeslot.countdown.edit")
                     Button(role: .destructive) {
                         pendingDelete = selected
                     } label: {
@@ -614,6 +621,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("删除倒计时")
+                    .accessibilityIdentifier("timeslot.countdown.delete")
                 }
             }
             .padding(.horizontal, Space.xxl)
@@ -791,10 +799,11 @@ struct UndoBanner: View {
                 .font(AppType.ui(Typo.footnote, .medium))
                 .lineLimit(1)
 
-            Button("撤销", action: onUndo)
+                Button("撤销", action: onUndo)
                 .buttonStyle(.borderedProminent)
                 .tint(accent)
                 .controlSize(.small)
+                .accessibilityIdentifier("timeslot.undo")
         }
         .padding(.horizontal, Space.m)
         .padding(.vertical, Space.s)
@@ -1186,6 +1195,7 @@ struct QuickActionButton: View {
         }
         .buttonStyle(.bordered)
         .tint(tint)
+        .accessibilityIdentifier("timeslot.quick-action.\(title)")
     }
 }
 
