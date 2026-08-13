@@ -11,7 +11,7 @@
 - 增加通知权限状态、删除倒计时/清空历史后的 8 秒撤销恢复。
 - 将番茄钟专注与统计拆分为独立工作区。
 - 增加本地存储 v2 迁移契约：升级前保存旧版键值快照，规范化和原子小组件写入完成后才标记成功。
-- 版本统一为 2.2.0（Build 52），更新上架资料、使用说明、检查清单、更新日志和交付包。
+- 版本统一为 2.2.0（Build 52），更新发布资料、使用说明、检查清单、更新日志和交付包。
 
 ## 数据恢复记录
 
@@ -43,6 +43,8 @@
 - `outputs/时隙-macOS-v2.2.0-build52.dmg`
   - SHA-256：`28455a4fc204e14d30054192226c0cedb0be4d5493904073023fa9f74e6aad65`
 
-## 公开发布限制
+## GitHub-only 发布边界
 
-当前发行包使用本机 Apple Development 签名，适合本机验证，不等同于公开分发。上架前仍需开发者使用 App Store Distribution 或 Developer ID 签名、公证/上传，并补齐真实支持 URL、隐私政策 URL、支持邮箱和最终截图。
+本轮发布渠道确定为 GitHub：源码进入仓库，版本化 ZIP/DMG 与 SHA-256 校验文件作为 GitHub Release 附件；不走 Mac App Store 上架流程。
+
+当前发行包使用本机 Apple Development 签名，尚未完成 Apple 公证。它可以作为 GitHub Release 候选包，但陌生设备首次打开时可能出现 macOS 安全提示。不得通过移除隔离属性绕过 Gatekeeper；若后续面向大量陌生设备分发，应改用 Developer ID 签名并完成公证。

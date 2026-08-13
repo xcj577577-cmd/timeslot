@@ -51,7 +51,7 @@ swift test --disable-sandbox
 4. 搜索“时隙”，选择类型与尺寸后添加。
 5. 如需多个组件显示不同目标，添加“时隙 · 自定义”，再右键每个实例选择“编辑小组件”并分别设置倒计时目标。
 
-当前工程使用 Apple Development 证书完成本机签名验证。正式对外分发前，还需使用 Developer ID 或 App Store Distribution 签名并完成 Apple 公证/商店审核；不要通过移除隔离属性绕过 Gatekeeper。
+当前 GitHub Release 提供源码、ZIP/DMG 和 SHA-256 校验文件。现有发行包使用 Apple Development 证书签名、尚未完成 Apple 公证；首次下载后 macOS 可能显示安全提示。正式面向陌生设备长期分发时，仍应改用 Developer ID 签名并完成公证；不要通过移除隔离属性绕过 Gatekeeper。
 
 ## 目录结构
 
