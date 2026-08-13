@@ -516,7 +516,8 @@ struct PomodoroView: View {
 
     private var startedAtText: String {
         guard let start = state.stopwatchSessionStartedAt else { return "尚未开始" }
-        return start.formatted(date: .omitted, time: .shortened)
+        // 与全应用的北京时间约定保持一致，避免正计时的「开始于」落在系统时区。
+        return beijingDateString(start, dateStyle: .omitted, timeStyle: .shortened)
     }
 
     private var timerCard: some View {
@@ -738,6 +739,9 @@ struct PomodoroView: View {
                         .frame(height: 9)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("本组番茄进度")
+            .accessibilityValue("当前组已完成 \(state.completedFocusSessions % state.roundsBeforeLongBreak) / \(state.roundsBeforeLongBreak) 个番茄")
         }
         .padding(Space.l)
         .cardSurface(cornerRadius: Radius.medium, borderOpacity: 0.05, shadowRadius: 8, shadowY: 2)

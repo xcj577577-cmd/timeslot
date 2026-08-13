@@ -128,6 +128,19 @@ private struct WidgetBrandGlyph: View {
     }
 }
 
+/// 与主应用 TimeSlotWedge 同构。小组件是独立 target，几何必须在这里再写一遍。
+private struct WidgetTimeSlotWedge: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.08))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.32))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - rect.height * 0.08))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.32))
+        path.closeSubpath()
+        return path
+    }
+}
+
 private struct WidgetModeLabel: View {
     let title: String
 
@@ -186,6 +199,8 @@ private struct WidgetProgressBar: View {
         GeometryReader { proxy in
             let clamped = min(1, max(0, value))
             let width = max(0, proxy.size.width) * clamped
+            let wedgeWidth = height * 0.7
+            let wedgeHeight = height * 1.55
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Color.primary.opacity(0.08))
@@ -201,6 +216,20 @@ private struct WidgetProgressBar: View {
                     .frame(width: width)
                     .shadow(color: color.opacity(0.25), radius: 2, x: 0, y: 1)
                     .widgetAccentable()
+            }
+            .overlay(alignment: .leading) {
+                if clamped > 0.04 {
+                    WidgetTimeSlotWedge()
+                        .fill(Color(hex: widgetBrandGoldHex))
+                        .frame(width: wedgeWidth, height: wedgeHeight)
+                        .offset(
+                            x: min(
+                                max(width - wedgeWidth * 0.55, 0),
+                                max(0, proxy.size.width - wedgeWidth)
+                            )
+                        )
+                        .widgetAccentable()
+                }
             }
         }
         .frame(height: height)

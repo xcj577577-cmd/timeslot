@@ -45,8 +45,23 @@ enum BrandPalette {
     static let teal = Color(hex: "#35B79F")
     static let mint = Color(hex: "#8CE4D0")
     static let gold = Color(hex: "#E8C27A")
+    static let goldHighlight = Color(hex: "#F3D69B")
     static let coral = Color(hex: "#D86F52")
     static let indigo = Color(hex: "#5A78B8")
+}
+
+/// 品牌母题的几何原语：右倾的金色平行四边形。
+/// 只出现在进度条末端和圆环尖端，不改读数排版，也不另起装饰层。
+struct TimeSlotWedge: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.08))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.32))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - rect.height * 0.08))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.32))
+        path.closeSubpath()
+        return path
+    }
 }
 
 /// 字号阶梯。正文保持清晰的 12 / 13.5 / 14.5 / 17 层级，再单独处理标题和计时读数。
@@ -410,8 +425,8 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
     }
 }
 
-/// 精致进度条：浅色轨道 + 品牌渐变填充 + 柔和阴影，可选末端小圆点。
-/// 客户端各处进度条统一走这里，避免每张卡各自调尺寸和颜色后失去一致性。
+/// 精致进度条：浅色轨道 + 品牌渐变填充。
+/// 末端用金色楔形代替圆点——进度走到哪里，「时隙」就停在哪里。
 struct TimeSlotProgressBar: View {
     let progress: CGFloat
     let color: Color
@@ -423,7 +438,8 @@ struct TimeSlotProgressBar: View {
         GeometryReader { proxy in
             let clamped = min(1, max(0, progress))
             let width = max(0, proxy.size.width) * clamped
-            let knob = height + 3
+            let wedgeWidth = height * 0.72
+            let wedgeHeight = height * 1.55
 
             ZStack(alignment: .leading) {
                 Capsule()
@@ -442,23 +458,34 @@ struct TimeSlotProgressBar: View {
             }
             .overlay(alignment: .leading) {
                 if showsKnob, clamped > 0.02 {
-                    Circle()
-                        .fill(color)
-                        .frame(width: knob, height: knob)
-                        .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1))
-                        .shadow(color: color.opacity(0.35), radius: 3, x: 0, y: 1)
-                        .offset(x: min(max(width - knob / 2, 0), max(0, proxy.size.width - knob)))
+                    TimeSlotWedge()
+                        .fill(
+                            LinearGradient(
+                                colors: [BrandPalette.goldHighlight, BrandPalette.gold],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: wedgeWidth, height: wedgeHeight)
+                        .shadow(color: BrandPalette.gold.opacity(0.42), radius: 3, x: 0, y: 1)
+                        .offset(
+                            x: min(
+                                max(width - wedgeWidth * 0.55, 0),
+                                max(0, proxy.size.width - wedgeWidth)
+                            )
+                        )
                 }
             }
             .frame(height: height)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .frame(height: showsKnob ? height + 4 : height)
+        .frame(height: showsKnob ? height + 6 : height)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: progress)
     }
 }
 
-/// 精致圆环：浅色轨道 + 渐变圆弧 + 柔和光晕，供番茄钟和正计时共用。
+/// 精致圆环：浅色轨道 + 渐变圆弧。
+/// 进度尖端落一枚金色楔形，让「现在」在圆环上也是那道时隙。
 struct TimeSlotRing: View {
     let progress: CGFloat
     let color: Color
@@ -468,22 +495,49 @@ struct TimeSlotRing: View {
 
     var body: some View {
         let clamped = min(1, max(0, progress))
-        ZStack {
-            Circle()
-                .stroke(Surface.track, lineWidth: lineWidth)
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            let radius = max(0, (side - lineWidth) / 2)
+            let theta = Angle.degrees(-90 + Double(clamped) * 360)
+            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            let tip = CGPoint(
+                x: center.x + CGFloat(cos(theta.radians)) * radius,
+                y: center.y + CGFloat(sin(theta.radians)) * radius
+            )
 
-            Circle()
-                .trim(from: 0, to: clamped)
-                .stroke(
-                    LinearGradient(
-                        colors: [color, color.opacity(0.80)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .shadow(color: showsGlow ? color.opacity(0.30) : .clear, radius: 7)
+            ZStack {
+                Circle()
+                    .stroke(Surface.track, lineWidth: lineWidth)
+
+                Circle()
+                    .trim(from: 0, to: clamped)
+                    .stroke(
+                        LinearGradient(
+                            colors: [color, color.opacity(0.80)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: showsGlow ? color.opacity(0.30) : .clear, radius: 7)
+
+                if clamped > 0.02 {
+                    TimeSlotWedge()
+                        .fill(
+                            LinearGradient(
+                                colors: [BrandPalette.goldHighlight, BrandPalette.gold],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: lineWidth * 0.62, height: lineWidth * 1.45)
+                        .rotationEffect(.degrees(Double(clamped) * 360))
+                        .position(tip)
+                        .shadow(color: BrandPalette.gold.opacity(showsGlow ? 0.45 : 0.2), radius: 3)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.45), value: progress)
     }
