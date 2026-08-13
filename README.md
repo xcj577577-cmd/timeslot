@@ -68,6 +68,28 @@
 | **时隙 · 本周专注目标** | 查看本周累计专注时长与目标进度。 |
 | **时隙桌面小组件** | 在中、大尺寸中组合展示关键状态。 |
 
+## 界面预览
+
+下面是时隙当前版本的真实界面截图。演示图使用中性的“产品发布日”示例数据，不包含个人记录。
+
+<p align="center">
+  <img src="./docs/images/countdown-overview.jpg" alt="时隙倒计时工作区" width="820" />
+</p>
+
+<p align="center"><sub>倒计时工作区：目标、进度、状态与桌面小组件同步集中在一个视图里。</sub></p>
+
+<table>
+  <tr>
+    <td align="center" width="62%">
+      <img src="./docs/images/widget-guide.jpg" alt="时隙小组件添加指南" width="360" />
+    </td>
+    <td valign="middle">
+      <strong>桌面小组件指南</strong><br /><br />
+      从小组件库添加时隙，选择倒计时、番茄钟、正计时或本周专注；“自定义”版本还支持为每个实例绑定不同目标。
+    </td>
+  </tr>
+</table>
+
 ## 快速开始
 
 ### 从 GitHub Release 安装
@@ -136,6 +158,7 @@ WidgetExtension/           WidgetKit 桌面小组件扩展
 Tests/                     核心逻辑测试
 AppBundle/                 Info.plist、授权与隐私清单
 scripts/                   品牌资产生成与 Release 验证脚本
+docs/images/               README 界面演示图
 outputs/                   使用说明、隐私政策、品牌资产与发布资料
 ```
 
