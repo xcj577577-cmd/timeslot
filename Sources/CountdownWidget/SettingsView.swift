@@ -130,6 +130,11 @@ struct AppSettingsPage: View {
                         Text("精细").tag("precise")
                     }
 
+                    Text("添加“时隙 · 自定义”后，可在 macOS 的“编辑小组件”中为每个组件分别选择倒计时目标。")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(2)
+
                     Divider()
 
                     HStack(spacing: Space.m) {
@@ -176,6 +181,28 @@ struct AppSettingsPage: View {
                 }
 
                 settingsCard(title: "数据", icon: "externaldrive") {
+                    HStack(spacing: Space.m) {
+                        Image(systemName: storageMigrationIcon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(storageMigrationColor)
+                            .frame(width: 24, height: 24)
+                            .background(
+                                storageMigrationColor.opacity(0.12),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(store.storageMigrationState.title)
+                                .font(AppType.ui(Typo.footnote, .medium))
+                            Text(store.storageMigrationState.subtitle)
+                                .font(AppType.caption())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    Divider()
+
                     HStack {
                         settingLabel(
                             title: "阶段记录",
@@ -473,6 +500,22 @@ struct AppSettingsPage: View {
             return ("共享空间不可用", "请重新安装当前版本以恢复小组件权限", "exclamationmark.triangle.fill", .orange)
         case .failed(let message):
             return ("小组件同步失败", message, "exclamationmark.circle.fill", .red)
+        }
+    }
+
+    private var storageMigrationIcon: String {
+        switch store.storageMigrationState {
+        case .current: return "checkmark.shield.fill"
+        case .migrated: return "arrow.up.circle.fill"
+        case .pending: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var storageMigrationColor: Color {
+        switch store.storageMigrationState {
+        case .current: return accent
+        case .migrated: return .blue
+        case .pending: return .orange
         }
     }
 

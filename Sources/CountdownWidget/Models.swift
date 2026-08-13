@@ -124,6 +124,48 @@ enum CountdownItemsStoragePolicy {
     }
 }
 
+/// 主应用与小组件共用的本地存储版本。
+///
+/// v1 是没有显式版本标记的 UserDefaults JSON；v2 保留原有键和数据格式，
+/// 但会先生成迁移快照，再写入规范化后的数据与原子小组件状态。这样不必为了
+/// 跨进程共享而贸然切换到 SwiftData，同时也让未来字段迁移有明确的落点。
+enum LocalStorageMigration {
+    static let currentSchemaVersion = 2
+
+    static func needsMigration(storedVersion: Int?) -> Bool {
+        guard let storedVersion else { return true }
+        return storedVersion < currentSchemaVersion
+    }
+}
+
+enum StorageMigrationState: Equatable {
+    case current
+    case migrated(from: Int?)
+    case pending(String)
+
+    var title: String {
+        switch self {
+        case .current: return "本地数据正常"
+        case .migrated: return "本地数据已升级"
+        case .pending: return "本地数据等待升级"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .current:
+            return "当前数据格式与小组件共享状态一致"
+        case .migrated(let version):
+            if let version {
+                return "已从旧版格式 " + String(version) + " 安全整理，原始迁移快照已保留"
+            }
+            return "已完成首次数据整理，原始迁移快照已保留"
+        case .pending(let message):
+            return message
+        }
+    }
+}
+
 /// 倒计时完成通知的纯决策逻辑，独立成函数便于测试：
 /// 只有「未暂停且仍在倒计时中」的目标才需要安排通知。
 enum CountdownNotificationPolicy {

@@ -350,7 +350,7 @@ struct ContentView: View {
                         .font(AppType.ui(Typo.footnote, .medium))
                         .tracking(Tracking.label)
                         .foregroundStyle(.secondary)
-                    Text("先选择要固定的倒计时，再从 macOS 小组件库单独添加倒计时、正计时、番茄钟或本周专注目标。")
+                    Text("独立倒计时组件沿用当前固定目标；如果要让多个组件显示不同目标，请添加“时隙 · 自定义”，再为每个组件分别选择倒计时。")
                         .font(AppType.ui(Typo.footnote))
                         .lineSpacing(2.5)
                         .foregroundStyle(.secondary)
@@ -891,6 +891,12 @@ private struct WidgetGuideSheet: View {
                         detail: "点击或拖动小号、中号或大号组件到桌面。",
                         accent: accent
                     )
+                    WidgetGuideStep(
+                        number: 4,
+                        title: "分别设置倒计时目标",
+                        detail: "添加“时隙 · 自定义”后，右键每个组件选择“编辑小组件”，即可绑定不同倒计时；目标被删除时会自动回退到当前固定项。",
+                        accent: accent
+                    )
                 }
 
                 VStack(alignment: .leading, spacing: Space.m) {
@@ -901,11 +907,12 @@ private struct WidgetGuideSheet: View {
                         spacing: Space.s
                     ) {
                         WidgetTypeTile(title: "倒计时", icon: "calendar.badge.clock", accent: accent)
+                        WidgetTypeTile(title: "自定义", icon: "slider.horizontal.3", accent: accent)
                         WidgetTypeTile(title: "番茄钟", icon: "timer", accent: accent)
                         WidgetTypeTile(title: "正计时", icon: "stopwatch.fill", accent: accent)
                         WidgetTypeTile(title: "本周专注", icon: "target", accent: accent)
                     }
-                    Text("另有组合总览和可编辑版本；应用内设置决定默认显示内容。")
+                    Text("另有组合总览和可编辑版本；自定义版本可让每个小组件绑定不同倒计时。")
                         .font(AppType.caption())
                         .foregroundStyle(.secondary)
                 }

@@ -2,6 +2,23 @@ import XCTest
 @testable import CountdownWidget
 
 final class TimeSlotCoreTests: XCTestCase {
+    func testLocalStorageMigrationRequiresUnversionedAndOlderData() {
+        XCTAssertTrue(LocalStorageMigration.needsMigration(storedVersion: nil))
+        XCTAssertTrue(LocalStorageMigration.needsMigration(storedVersion: 1))
+        XCTAssertFalse(LocalStorageMigration.needsMigration(
+            storedVersion: LocalStorageMigration.currentSchemaVersion
+        ))
+    }
+
+    func testStorageMigrationStateCommunicatesSnapshotOutcome() {
+        XCTAssertEqual(StorageMigrationState.current.title, "本地数据正常")
+        XCTAssertTrue(StorageMigrationState.migrated(from: nil).subtitle.contains("首次数据整理"))
+        XCTAssertEqual(
+            StorageMigrationState.pending("稍后重试").subtitle,
+            "稍后重试"
+        )
+    }
+
     func testRunningPomodoroRemainingUsesAbsoluteEndDate() {
         let start = Date(timeIntervalSinceReferenceDate: 1_000_000)
         var state = PomodoroState()

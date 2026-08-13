@@ -89,8 +89,8 @@ plutil -lint "$WIDGET_PRIVACY" >/dev/null
 assert_plist_value "$APP_PRIVACY" "NSPrivacyTracking" "false"
 assert_plist_value "$WIDGET_PRIVACY" "NSPrivacyTracking" "false"
 
-assert_plist_value "$APP_PATH/Contents/Info.plist" "CFBundleShortVersionString" "2.1.1"
-assert_plist_value "$APP_PATH/Contents/Info.plist" "CFBundleVersion" "51"
+assert_plist_value "$APP_PATH/Contents/Info.plist" "CFBundleShortVersionString" "2.2.0"
+assert_plist_value "$APP_PATH/Contents/Info.plist" "CFBundleVersion" "52"
 assert_plist_value \
     "$APPEX_PATH/Contents/Info.plist" \
     "NSExtension:NSExtensionPointIdentifier" \

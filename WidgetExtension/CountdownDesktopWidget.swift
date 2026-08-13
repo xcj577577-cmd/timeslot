@@ -491,19 +491,76 @@ enum CountdownWidgetDisplayMode: String, AppEnum {
     }
 }
 
+/// 可配置小组件使用的倒计时目标。
+///
+/// 目标只保存稳定的 UUID，标题与日期在小组件配置界面打开时从共享状态重新读取，
+/// 这样编辑倒计时名称或目标时间后，不会留下过期的配置副本。
+struct CountdownWidgetTarget: AppEntity, Hashable, Sendable {
+    let id: String
+    let title: String
+    let targetDate: Date
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation {
+        TypeDisplayRepresentation(name: "倒计时目标")
+    }
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(title)")
+    }
+
+    static let defaultQuery = CountdownWidgetTargetQuery()
+
+    init(item: SharedCountdownItem) {
+        id = item.id.uuidString
+        title = item.title
+        targetDate = item.targetDate
+    }
+}
+
+struct CountdownWidgetTargetQuery: EntityQuery {
+    func entities(for identifiers: [CountdownWidgetTarget.ID]) async throws -> [CountdownWidgetTarget] {
+        let targets = CountdownEntryFactory.loadCountdownItems().map(CountdownWidgetTarget.init(item:))
+        let targetsByID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+        return identifiers.compactMap { targetsByID[$0] }
+    }
+
+    func suggestedEntities() async throws -> [CountdownWidgetTarget] {
+        let items = CountdownEntryFactory.loadCountdownItems()
+        let orderedItems = items.sorted { left, right in
+            if left.isPinned != right.isPinned {
+                return left.isPinned && !right.isPinned
+            }
+            return (left.createdAt ?? left.targetDate) < (right.createdAt ?? right.targetDate)
+        }
+        return orderedItems.map(CountdownWidgetTarget.init(item:))
+    }
+
+    func defaultResult() async -> CountdownWidgetTarget? {
+        guard let item = CountdownEntryFactory.loadCountdownItems().first(where: \.isPinned)
+                ?? CountdownEntryFactory.loadCountdownItems().first else {
+            return nil
+        }
+        return CountdownWidgetTarget(item: item)
+    }
+}
+
 struct CountdownWidgetConfiguration: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "时隙桌面小组件"
-    static let description = IntentDescription("选择这个时隙桌面小组件显示倒计时、正计时、番茄钟或本周专注目标。")
+    static let description = IntentDescription("为每个小组件分别选择显示内容和倒计时目标。")
 
     @Parameter(title: "显示内容")
     var displayMode: CountdownWidgetDisplayMode?
 
+    @Parameter(title: "倒计时目标")
+    var countdownTarget: CountdownWidgetTarget?
+
     init() {
         displayMode = .followApp
+        countdownTarget = nil
     }
 }
 
-private enum CountdownEntryFactory {
+enum CountdownEntryFactory {
     static func placeholder(displayMode: String = "both") -> CountdownEntry {
         CountdownEntry(
             date: Date(),
@@ -593,7 +650,18 @@ private enum CountdownEntryFactory {
         return UserDefaults(suiteName: sharedDefaultsName)?.string(forKey: key)
     }
 
-    static func loadSnapshot(displayModeOverride: String?) -> Snapshot {
+    static func loadCountdownItems() -> [SharedCountdownItem] {
+        if let items = loadWidgetStateFile()?.items {
+            return items
+        }
+        guard let data = loadSharedData(forKey: sharedItemsKey) else { return [] }
+        return (try? JSONDecoder().decode([SharedCountdownItem].self, from: data)) ?? []
+    }
+
+    static func loadSnapshot(
+        displayModeOverride: String?,
+        countdownTargetIDOverride: String? = nil
+    ) -> Snapshot {
         let stateFile = loadWidgetStateFile()
 
         let requestedDisplayMode = displayModeOverride
@@ -608,13 +676,11 @@ private enum CountdownEntryFactory {
         let timeUnit = ["days", "hours", "precise", "auto"].contains(requestedTimeUnit)
             ? requestedTimeUnit : "auto"
 
-        var item: SharedCountdownItem?
-        if let items = stateFile?.items {
-            item = items.first(where: \.isPinned) ?? items.first
-        } else if let data = loadSharedData(forKey: sharedItemsKey),
-                  let items = try? JSONDecoder().decode([SharedCountdownItem].self, from: data) {
-            item = items.first(where: \.isPinned) ?? items.first
+        let items = loadCountdownItems()
+        let requestedTarget = countdownTargetIDOverride.flatMap { requestedID in
+            items.first { $0.id.uuidString.caseInsensitiveCompare(requestedID) == .orderedSame }
         }
+        let item = requestedTarget ?? items.first(where: \.isPinned) ?? items.first
 
         var pomodoro: SharedPomodoroState?
         if let state = stateFile?.pomodoro {
@@ -641,8 +707,15 @@ private enum CountdownEntryFactory {
         )
     }
 
-    static func makeEntry(at date: Date, displayModeOverride: String? = nil) -> CountdownEntry {
-        let snapshot = loadSnapshot(displayModeOverride: displayModeOverride)
+    static func makeEntry(
+        at date: Date,
+        displayModeOverride: String? = nil,
+        countdownTargetIDOverride: String? = nil
+    ) -> CountdownEntry {
+        let snapshot = loadSnapshot(
+            displayModeOverride: displayModeOverride,
+            countdownTargetIDOverride: countdownTargetIDOverride
+        )
         return CountdownEntry(
             date: date,
             displayMode: snapshot.displayMode,
@@ -653,9 +726,15 @@ private enum CountdownEntryFactory {
         )
     }
 
-    static func makeTimeline(displayModeOverride: String? = nil) -> Timeline<CountdownEntry> {
+    static func makeTimeline(
+        displayModeOverride: String? = nil,
+        countdownTargetIDOverride: String? = nil
+    ) -> Timeline<CountdownEntry> {
         let now = Date()
-        let snapshot = loadSnapshot(displayModeOverride: displayModeOverride)
+        let snapshot = loadSnapshot(
+            displayModeOverride: displayModeOverride,
+            countdownTargetIDOverride: countdownTargetIDOverride
+        )
         let hasActivePomodoro = snapshot.pomodoro?.isRunning == true
             && (snapshot.pomodoro?.endDate ?? .distantPast) > now
         let hasActiveTimer = hasActivePomodoro || snapshot.pomodoro?.stopwatchRunning == true
@@ -731,11 +810,18 @@ struct ConfigurableCountdownProvider: AppIntentTimelineProvider {
     }
 
     func snapshot(for configuration: CountdownWidgetConfiguration, in context: Context) async -> CountdownEntry {
-        CountdownEntryFactory.makeEntry(at: Date(), displayModeOverride: displayMode(for: configuration))
+        CountdownEntryFactory.makeEntry(
+            at: Date(),
+            displayModeOverride: displayMode(for: configuration),
+            countdownTargetIDOverride: countdownTargetID(for: configuration)
+        )
     }
 
     func timeline(for configuration: CountdownWidgetConfiguration, in context: Context) async -> Timeline<CountdownEntry> {
-        CountdownEntryFactory.makeTimeline(displayModeOverride: displayMode(for: configuration))
+        CountdownEntryFactory.makeTimeline(
+            displayModeOverride: displayMode(for: configuration),
+            countdownTargetIDOverride: countdownTargetID(for: configuration)
+        )
     }
 
     private func displayMode(for configuration: CountdownWidgetConfiguration) -> String? {
@@ -747,6 +833,10 @@ struct ConfigurableCountdownProvider: AppIntentTimelineProvider {
         case .weekly: return "weekly"
         case .both: return "both"
         }
+    }
+
+    private func countdownTargetID(for configuration: CountdownWidgetConfiguration) -> String? {
+        configuration.countdownTarget?.id
     }
 }
 

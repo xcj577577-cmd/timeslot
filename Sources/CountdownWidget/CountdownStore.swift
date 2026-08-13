@@ -53,6 +53,7 @@ final class CountdownStore: ObservableObject {
     @Published private(set) var widgetSyncState: WidgetSyncState = .checking
     @Published private(set) var notificationPermissionState: NotificationPermissionState = .checking
     @Published private(set) var undoableAction: UndoableStoreAction? = nil
+    @Published private(set) var storageMigrationState: StorageMigrationState = .current
 
     private var timerCancellable: AnyCancellable?
     private var widgetReloadTask: DispatchWorkItem?
@@ -94,6 +95,7 @@ final class CountdownStore: ObservableObject {
     private let widgetTimeUnitKey = "widgetTimeUnit"
     private let accentPresetKey = "accentPreset"
     private let appearanceModeKey = "appearanceMode"
+    private static let storageSchemaVersionKey = "storageSchemaVersion"
     /// 不足 10 秒的专注/阶段没有统计意义，不写入历史，启动时也会清掉旧数据。
     private static let minimumMeaningfulSessionDuration: TimeInterval = 10
     private static let maximumHistoryCount = 10_000
@@ -116,6 +118,25 @@ final class CountdownStore: ObservableObject {
         let timeUnit: String
         let updatedAt: Date
     }
+
+    private static let migrationDataKeys = [
+        "countdownItems",
+        "pomodoroState",
+        "pomodoroHistory",
+        "pomodoroTasks"
+    ]
+
+    private static let migrationStringKeys = [
+        "widgetDisplayMode",
+        "widgetTimeUnit",
+        "accentPreset",
+        "appearanceMode",
+        "selectedCountdownID",
+        "enableNotifications",
+        "enableSounds",
+        "pomodoroHistoryRange",
+        "pomodoroTimerMode"
+    ]
 
     /// 直接写给小组件的状态文件。UserDefaults 的落盘由 cfprefsd 异步控制，
     /// 应用刚改完状态时扩展进程可能还读到旧值；这份文件是原子的、立即可见的。
@@ -205,6 +226,74 @@ final class CountdownStore: ObservableObject {
         countdownDefaults.set(value, forKey: key)
     }
 
+    private static func storedStorageSchemaVersion() -> Int? {
+        guard let value = countdownDefaults.object(forKey: storageSchemaVersionKey) else {
+            return nil
+        }
+        return value as? Int
+    }
+
+    private static func markStorageSchemaCurrent() {
+        countdownDefaults.set(LocalStorageMigration.currentSchemaVersion, forKey: storageSchemaVersionKey)
+        countdownDefaults.set(Date(), forKey: "storageSchemaMigratedAt")
+    }
+
+    /// 保存旧版原始键值，作为迁移的可回退证据。只在版本升级时执行一次。
+    /// 文件使用 Property List 表示，不改变用户现有的共享键，也不需要网络或数据库。
+    private static func preserveLegacyStorageSnapshotIfNeeded() -> Bool {
+        var values: [String: Data] = [:]
+        for key in migrationDataKeys {
+            if let data = countdownDefaults.data(forKey: key), !data.isEmpty {
+                values[key] = data
+            }
+        }
+
+        var preferences: [String: Data] = [:]
+        for key in migrationStringKeys {
+            if let rawValue = countdownDefaults.object(forKey: key) {
+                if let data = try? PropertyListSerialization.data(
+                    fromPropertyList: rawValue,
+                    format: .binary,
+                    options: 0
+                ) {
+                    preferences[key] = data
+                }
+            }
+        }
+        guard !values.isEmpty || !preferences.isEmpty else { return true }
+
+        guard let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else { return false }
+
+        let formatter = ISO8601DateFormatter()
+        let stamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let directory = applicationSupport
+            .appendingPathComponent("时隙/Migrations", isDirectory: true)
+            .appendingPathComponent(
+                "storage-v1-" + stamp + "-" + String(UUID().uuidString.prefix(8)),
+                isDirectory: true
+            )
+
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try PropertyListSerialization.data(
+                fromPropertyList: values,
+                format: .binary,
+                options: 0
+            ).write(to: directory.appendingPathComponent("data.plist"), options: .atomic)
+            try PropertyListSerialization.data(
+                fromPropertyList: preferences,
+                format: .binary,
+                options: 0
+            ).write(to: directory.appendingPathComponent("preferences.plist"), options: .atomic)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - 通知与声音开关
 
     var notificationsEnabled: Bool {
@@ -266,6 +355,12 @@ final class CountdownStore: ObservableObject {
     }
 
     init() {
+        let storedStorageSchemaVersion = Self.storedStorageSchemaVersion()
+        let needsStorageMigration = LocalStorageMigration.needsMigration(
+            storedVersion: storedStorageSchemaVersion
+        )
+        let migrationSnapshotReady = !needsStorageMigration
+            || Self.preserveLegacyStorageSnapshotIfNeeded()
         let sharedWidgetState = Self.loadWidgetStateFile()
         let shouldRestoreRunningPomodoro = sharedWidgetState?.pomodoro.isRunning == true
             || sharedWidgetState?.pomodoro.isStopwatchActive == true
@@ -384,6 +479,14 @@ final class CountdownStore: ObservableObject {
         persistSharedStateWithoutWidgetReload()
         savePomodoroHistory()
         savePomodoroTasks()
+        if needsStorageMigration, migrationSnapshotReady {
+            Self.markStorageSchemaCurrent()
+            storageMigrationState = .migrated(from: storedStorageSchemaVersion)
+        } else if needsStorageMigration {
+            storageMigrationState = .pending("未能创建迁移快照；现有数据未标记为已升级，请稍后重试")
+        } else {
+            storageMigrationState = .current
+        }
         updateNotificationPermission(requestIfNeeded: true)
         rescheduleCountdownNotifications()
         // 启动后主动刷新一次桌面组件：系统可能仍保留着更新前启动的扩展进程，
