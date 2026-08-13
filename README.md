@@ -53,6 +53,8 @@ swift test --disable-sandbox
 
 当前 GitHub Release 提供源码、ZIP/DMG 和 SHA-256 校验文件。现有发行包使用 Apple Development 证书签名、尚未完成 Apple 公证；首次下载后 macOS 可能显示安全提示。正式面向陌生设备长期分发时，仍应改用 Developer ID 签名并完成公证；不要通过移除隔离属性绕过 Gatekeeper。
 
+首次把本仓库推到 GitHub、打 `v2.2.0` 标签并上传发行包的步骤见 [`outputs/GITHUB-PUBLISH.md`](outputs/GITHUB-PUBLISH.md)。
+
 ## 目录结构
 
 - `Sources/CountdownWidget/`：主应用界面、模型、状态、通知与备份。
@@ -64,4 +66,8 @@ swift test --disable-sandbox
 
 ## 隐私
 
-时隙不联网、不追踪、不收集数据，也不要求账号。详见 `outputs/隐私政策.md`。
+时隙不联网、不追踪、不收集数据，也不要求账号。详见 [`outputs/隐私政策.md`](outputs/隐私政策.md)。使用说明见 [`outputs/使用说明.md`](outputs/使用说明.md)。
+
+## 许可证
+
+[MIT](LICENSE)
