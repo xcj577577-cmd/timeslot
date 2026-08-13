@@ -90,6 +90,25 @@
   </tr>
 </table>
 
+## 品牌视觉
+
+这组发布视觉用于展示时隙的品牌方向：深青绿、米白、金色时隙与轻量玻璃材质。它们是产品宣传图，不代替上面的真实功能截图。
+
+<p align="center">
+  <img src="./docs/images/promo-hero.png" alt="时隙产品发布主视觉" width="820" />
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="58%">
+      <img src="./docs/images/promo-widgets.png" alt="时隙桌面小组件品牌视觉" width="460" />
+    </td>
+    <td align="center" width="42%">
+      <img src="./docs/images/promo-poster.png" alt="时隙竖版发布海报" width="300" />
+    </td>
+  </tr>
+</table>
+
 ## 快速开始
 
 ### 从 GitHub Release 安装
