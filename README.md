@@ -72,13 +72,13 @@
 
 ## 界面预览
 
-下面是时隙当前版本的真实界面截图。演示图使用中性的“产品发布日”示例数据，不包含个人记录。
+下面是时隙当前版本的真实界面截图，展示番茄钟与正计时工作区。
 
 <p align="center">
-  <img src="./docs/images/countdown-overview.jpg" alt="时隙倒计时工作区" width="820" />
+  <img src="./docs/images/pomodoro-overview.jpg" alt="时隙番茄钟与正计时工作区" width="820" />
 </p>
 
-<p align="center"><sub>倒计时工作区：目标、进度、状态与桌面小组件同步集中在一个视图里。</sub></p>
+<p align="center"><sub>专注工作区：番茄钟、正计时、当前任务与本次统计集中在一个视图里。</sub></p>
 
 <table>
   <tr>

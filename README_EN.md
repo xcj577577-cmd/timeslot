@@ -72,13 +72,13 @@ TimeSlot uses native WidgetKit widgets—not floating windows—so they never co
 
 ## Interface preview
 
-These are screenshots from the current release. The demo uses neutral “Product Launch” data and contains no personal records.
+This is a screenshot from the current release, showing the Pomodoro and stopwatch workspace.
 
 <p align="center">
-  <img src="./docs/images/countdown-overview.jpg" alt="TimeSlot countdown workspace" width="820" />
+  <img src="./docs/images/pomodoro-overview.jpg" alt="TimeSlot Pomodoro and stopwatch workspace" width="820" />
 </p>
 
-<p align="center"><sub>Countdown workspace: goals, progress, status, and desktop-widget sync in one view.</sub></p>
+<p align="center"><sub>Focus workspace: Pomodoro, stopwatch, current task, and session stats in one view.</sub></p>
 
 <table>
   <tr>
