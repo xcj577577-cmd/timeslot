@@ -10,6 +10,23 @@ struct AppSettingsPage: View {
     @State private var pendingImport: BackupPayload?
     @State private var showingImportConfirmation = false
     @State private var operationError: String?
+    @State private var selectedSoundPreset: SoundEffectPreset = .glass
+
+    private var soundPresetBinding: Binding<SoundEffectPreset> {
+        Binding(
+            get: {
+                if let raw = UserDefaults.standard.string(forKey: "timeslot_sound_preset"),
+                   let preset = SoundEffectPreset(rawValue: raw) {
+                    return preset
+                }
+                return .glass
+            },
+            set: { newValue in
+                selectedSoundPreset = newValue
+                UserDefaults.standard.set(newValue.rawValue, forKey: "timeslot_sound_preset")
+            }
+        )
+    }
 
     private var accent: Color { store.accentPreset.color }
 
@@ -25,24 +42,90 @@ struct AppSettingsPage: View {
                         .foregroundStyle(.secondary)
                 }
 
-                settingsCard(title: "提醒", icon: "bell.badge") {
+                settingsCard(title: "声音与专注音效", icon: "speaker.wave.2.fill") {
+                    Toggle(isOn: soundsBinding) {
+                        settingLabel(title: "阶段结束提示音", subtitle: "倒计时到达或番茄钟阶段结束时播放声音")
+                    }
+                    .toggleStyle(.switch)
+                    .tint(accent)
+                    .accessibilityIdentifier("timeslot.settings.sounds.toggle")
+
+                    if store.soundsEnabled {
+                        HStack(spacing: Space.m) {
+                            Text("音效选择")
+                                .font(AppType.ui(Typo.footnote, .medium))
+                            Spacer()
+                            Picker("提示音", selection: soundPresetBinding) {
+                                ForEach(SoundEffectPreset.allCases) { preset in
+                                    Text(preset.rawValue).tag(preset)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: 120)
+
+                            Button {
+                                selectedSoundPreset.play()
+                            } label: {
+                                Image(systemName: "play.circle.fill")
+                                    .font(AppType.ui(Typo.body, .medium))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(accent)
+                            .help("试听当前提示音")
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        HStack(spacing: Space.s) {
+                            Text("专注背景白噪音")
+                                .font(AppType.ui(Typo.footnote, .medium))
+                            Spacer()
+                            Picker("白噪音类型", selection: Binding(
+                                get: { FocusAmbiencePlayer.shared.currentSound },
+                                set: { FocusAmbiencePlayer.shared.selectSound($0) }
+                            )) {
+                                ForEach(FocusAmbienceSound.allCases) { sound in
+                                    Text(sound.rawValue).tag(sound)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: 120)
+                        }
+
+                        if FocusAmbiencePlayer.shared.currentSound != .off {
+                            HStack(spacing: Space.m) {
+                                Image(systemName: "speaker.wave.2.fill")
+                                    .font(AppType.caption())
+                                    .foregroundStyle(.secondary)
+                                Slider(value: Binding(
+                                    get: { FocusAmbiencePlayer.shared.volume },
+                                    set: { FocusAmbiencePlayer.shared.volume = $0 }
+                                ), in: 0...1)
+                                Text("\(Int(FocusAmbiencePlayer.shared.volume * 100))%")
+                                    .font(AppType.caption())
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 32, alignment: .trailing)
+                            }
+                            .padding(.top, 2)
+                        }
+                    }
+
+                    Divider()
+
                     Toggle(isOn: notificationsBinding) {
-                        settingLabel(title: "通知提醒", subtitle: "倒计时到达和番茄钟阶段结束时通知")
+                        settingLabel(title: "系统横幅通知", subtitle: "允许在屏幕右上角显示 macOS 系统通知")
                     }
                     .toggleStyle(.switch)
                     .tint(accent)
                     .accessibilityIdentifier("timeslot.settings.notifications.toggle")
 
                     notificationPermissionStatus
-
-                    Divider()
-
-                    Toggle(isOn: soundsBinding) {
-                        settingLabel(title: "提示音", subtitle: "应用内播放阶段结束提示音")
-                    }
-                    .toggleStyle(.switch)
-                    .tint(accent)
-                    .accessibilityIdentifier("timeslot.settings.sounds.toggle")
                 }
 
                 settingsCard(title: "外观", icon: "circle.lefthalf.filled") {
@@ -63,7 +146,7 @@ struct AppSettingsPage: View {
                         .lineSpacing(2)
                 }
 
-                settingsCard(title: "颜色", icon: "paintpalette") {
+                settingsCard(title: "颜色主题", icon: "paintpalette") {
                     HStack(spacing: Space.l) {
                         ForEach(ColorPreset.allCases) { preset in
                             Button {
@@ -72,21 +155,22 @@ struct AppSettingsPage: View {
                                 VStack(spacing: Space.s) {
                                     Circle()
                                         .fill(preset.color)
-                                        .frame(width: 30, height: 30)
+                                        .frame(width: 32, height: 32)
                                         .overlay(
                                             Circle().stroke(Color.primary.opacity(0.16), lineWidth: 1)
                                         )
                                         .overlay {
                                             if store.accentPreset == preset {
                                                 Image(systemName: "checkmark")
-                                                    .font(.system(size: 12, weight: .bold))
+                                                    .font(.system(size: 13, weight: .bold))
                                                     .foregroundStyle(.white)
-                                                    .shadow(color: .black.opacity(0.3), radius: 1)
+                                                    .shadow(color: .black.opacity(0.4), radius: 1)
                                             }
                                         }
+                                        .shadow(color: preset.color.opacity(store.accentPreset == preset ? 0.35 : 0), radius: 6)
                                     Text(preset.title)
-                                        .font(AppType.caption())
-                                        .foregroundStyle(.secondary)
+                                        .font(AppType.caption(12, weight: store.accentPreset == preset ? .semibold : .regular))
+                                        .foregroundStyle(store.accentPreset == preset ? Color.primary : Color.secondary)
                                 }
                             }
                             .buttonStyle(TimeSlotPressableStyle())

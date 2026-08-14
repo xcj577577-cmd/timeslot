@@ -65,8 +65,18 @@ struct PomodoroView: View {
     }
 
     private var state: PomodoroState { store.pomodoro }
-    private var phaseColor: Color { Color(hex: state.phase.colorHex) }
-    private var stopwatchColor: Color { store.accentPreset.color }
+    private var accent: Color { store.accentPreset.color }
+
+    private func phaseColor(for phase: PomodoroPhase) -> Color {
+        switch phase {
+        case .focus: return accent
+        case .shortBreak: return Color(hex: "#2C8C7C")
+        case .longBreak: return Color(hex: "#5A78B8")
+        }
+    }
+
+    private var phaseColor: Color { phaseColor(for: state.phase) }
+    private var stopwatchColor: Color { accent }
 
     // 这些范围都是「天」的粒度，跟着渲染时刻取一次就够，不需要每秒重算。
     private var historyBounds: (start: Date, end: Date)? {
@@ -537,6 +547,10 @@ struct PomodoroView: View {
             .font(AppType.ui(Typo.footnote, .medium))
             .frame(width: 240)
 
+            if timerMode == .countdown && !state.isRunning {
+                quickPresetPills
+            }
+
             ZStack {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let isStopwatch = timerMode == .stopwatch
@@ -547,64 +561,67 @@ struct PomodoroView: View {
                         : progress(at: context.date)
 
                     ZStack {
-                    TimeSlotRing(progress: prog, color: accent, lineWidth: 12, showsGlow: isLive)
+                        TimeSlotRing(progress: prog, color: accent, lineWidth: 12, showsGlow: isLive)
 
-                    VStack(spacing: Space.s) {
-                    HStack(spacing: Space.xs) {
-                        Image(systemName: timerMode == .stopwatch ? "stopwatch.fill" : state.phase.icon)
-                        Text(timerMode == .stopwatch ? "正计时" : state.phase.title)
-                    }
-                    .font(AppType.ui(Typo.footnote, .medium))
-                    .foregroundStyle(timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background((timerMode == .stopwatch ? stopwatchColor : phaseColor).opacity(0.12), in: Capsule())
-                    .overlay(Capsule().stroke((timerMode == .stopwatch ? stopwatchColor : phaseColor).opacity(0.2), lineWidth: 1))
-                    .symbolEffect(.pulse, isActive: isLive)
-
-                    if timerMode == .stopwatch {
-                        Text(stopwatchTimeText(state.stopwatchElapsed(at: context.date)))
-                            .font(AppType.timer(Typo.timerLarge))
-                            .tracking(Tracking.timer)
-                            .monospacedDigit()
-                            .foregroundStyle(stopwatchColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.62)
-                            .frame(maxWidth: 232)
-                    } else {
-                        PomodoroTimerText(
-                            state: state,
-                            fontSize: Typo.timerLarge,
-                            color: phaseColor
-                        )
-                    }
-
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(
-                                (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning)
-                                ? (timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                                : Color.secondary.opacity(0.4)
-                            )
-                            .frame(width: 6, height: 6)
-                            .shadow(
-                                color: (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning)
-                                    ? (timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                                    : Color.clear,
-                                radius: 4
-                            )
-                        Text(timerStatusTitle)
+                        VStack(spacing: Space.s) {
+                            HStack(spacing: Space.xs) {
+                                Image(systemName: timerMode == .stopwatch ? "stopwatch.fill" : state.phase.icon)
+                                Text(timerMode == .stopwatch ? "正计时" : state.phase.title)
+                            }
                             .font(AppType.ui(Typo.footnote, .medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background((timerMode == .stopwatch ? stopwatchColor : phaseColor).opacity(0.12), in: Capsule())
+                            .overlay(Capsule().stroke((timerMode == .stopwatch ? stopwatchColor : phaseColor).opacity(0.2), lineWidth: 1))
+                            .symbolEffect(.pulse, isActive: isLive)
+
+                            if timerMode == .stopwatch {
+                                Text(stopwatchTimeText(state.stopwatchElapsed(at: context.date)))
+                                    .font(AppType.timer(Typo.timerLarge))
+                                    .tracking(Tracking.timer)
+                                    .monospacedDigit()
+                                    .foregroundStyle(stopwatchColor)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.62)
+                                    .frame(maxWidth: 232)
+                            } else {
+                                PomodoroTimerText(
+                                    state: state,
+                                    fontSize: Typo.timerLarge,
+                                    color: phaseColor
+                                )
+                            }
+
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(
+                                        (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning)
+                                        ? (timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                                        : Color.secondary.opacity(0.4)
+                                    )
+                                    .frame(width: 6, height: 6)
+                                    .shadow(
+                                        color: (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning)
+                                            ? (timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                                            : Color.clear,
+                                        radius: 4
+                                    )
+                                Text(timerStatusTitle)
+                                    .font(AppType.ui(Typo.footnote, .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(Color.primary.opacity(0.04), in: Capsule())
+                        }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Color.primary.opacity(0.04), in: Capsule())
-                    }
-                }
                 }
             }
             .frame(width: 232, height: 232)
+            .overlay {
+                ConfettiEffectView(isActive: state.phase == .focus && state.remaining(at: Date()) <= 0)
+            }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
                 timerMode == .stopwatch
@@ -694,8 +711,12 @@ struct PomodoroView: View {
                     .controlSize(.regular)
                 }
             }
+
+            Divider().frame(width: 220).opacity(0.3)
+
+            focusAmbienceControlBar
         }
-        .frame(maxWidth: .infinity, minHeight: 432)
+        .frame(maxWidth: .infinity, minHeight: 450)
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.xl)
         .cardSurface(
@@ -704,6 +725,78 @@ struct PomodoroView: View {
             shadowRadius: 14,
             shadowY: 4
         )
+    }
+
+    private var quickPresetPills: some View {
+        HStack(spacing: 6) {
+            ForEach([25, 45, 60, 90], id: \.self) { mins in
+                let isCurrent = state.focusMinutes == mins
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        store.updatePomodoroSettings(
+                            focusMinutes: mins,
+                            shortBreakMinutes: state.shortBreakMinutes,
+                            longBreakMinutes: state.longBreakMinutes,
+                            roundsBeforeLongBreak: state.roundsBeforeLongBreak,
+                            weeklyFocusGoalMinutes: state.weeklyFocusGoalMinutes
+                        )
+                    }
+                } label: {
+                    Text("\(mins)分")
+                        .font(AppType.caption(11.5, weight: isCurrent ? .semibold : .regular))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(isCurrent ? phaseColor.opacity(0.18) : Surface.nested, in: Capsule())
+                        .overlay(Capsule().stroke(isCurrent ? phaseColor.opacity(0.4) : Color.clear, lineWidth: 1))
+                        .foregroundStyle(isCurrent ? phaseColor : Color.secondary)
+                }
+                .buttonStyle(TimeSlotPressableStyle())
+                .disabled(state.isRunning)
+            }
+        }
+    }
+
+    private var focusAmbienceControlBar: some View {
+        HStack(spacing: Space.m) {
+            Menu {
+                ForEach(FocusAmbienceSound.allCases) { sound in
+                    Button {
+                        FocusAmbiencePlayer.shared.selectSound(sound)
+                    } label: {
+                        Label(sound.rawValue, systemImage: sound.icon)
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: FocusAmbiencePlayer.shared.currentSound.icon)
+                        .foregroundStyle(FocusAmbiencePlayer.shared.currentSound == .off ? Color.secondary : phaseColor)
+                    Text(FocusAmbiencePlayer.shared.currentSound.rawValue)
+                        .font(AppType.caption(12, weight: .medium))
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(AppType.caption(9))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Surface.nested, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            if FocusAmbiencePlayer.shared.currentSound != .off {
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.wave.1.fill")
+                        .font(AppType.caption(10))
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { FocusAmbiencePlayer.shared.volume },
+                        set: { FocusAmbiencePlayer.shared.volume = $0 }
+                    ), in: 0...1)
+                    .frame(width: 64)
+                    .controlSize(.mini)
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
     }
 
     private var sessionProgress: some View {
@@ -773,7 +866,7 @@ struct PomodoroView: View {
                 PomodoroRhythmCell(
                     label: "专注",
                     icon: PomodoroPhase.focus.icon,
-                    color: Color(hex: PomodoroPhase.focus.colorHex),
+                    color: phaseColor(for: .focus),
                     current: state.focusMinutes,
                     suffix: "分",
                     presets: PomodoroPresets.focus
@@ -781,7 +874,7 @@ struct PomodoroView: View {
                 PomodoroRhythmCell(
                     label: "短休息",
                     icon: PomodoroPhase.shortBreak.icon,
-                    color: Color(hex: PomodoroPhase.shortBreak.colorHex),
+                    color: phaseColor(for: .shortBreak),
                     current: state.shortBreakMinutes,
                     suffix: "分",
                     presets: PomodoroPresets.shortBreak
@@ -789,7 +882,7 @@ struct PomodoroView: View {
                 PomodoroRhythmCell(
                     label: "长休息",
                     icon: PomodoroPhase.longBreak.icon,
-                    color: Color(hex: PomodoroPhase.longBreak.colorHex),
+                    color: phaseColor(for: .longBreak),
                     current: state.longBreakMinutes,
                     suffix: "分",
                     presets: PomodoroPresets.longBreak
@@ -848,14 +941,16 @@ struct PomodoroView: View {
             }
 
             HStack(spacing: 0) {
-                PomodoroTotalCell(label: "专注总计", value: formatHistoryDuration(focusTotal), color: Color(hex: PomodoroPhase.focus.colorHex))
+                PomodoroTotalCell(label: "专注总计", value: formatHistoryDuration(focusTotal), color: phaseColor(for: .focus))
                 Divider().frame(height: 42)
-                PomodoroTotalCell(label: "短休息", value: formatHistoryDuration(shortBreakTotal), color: Color(hex: PomodoroPhase.shortBreak.colorHex))
+                PomodoroTotalCell(label: "短休息", value: formatHistoryDuration(shortBreakTotal), color: phaseColor(for: .shortBreak))
                 Divider().frame(height: 42)
-                PomodoroTotalCell(label: "长休息", value: formatHistoryDuration(longBreakTotal), color: Color(hex: PomodoroPhase.longBreak.colorHex))
+                PomodoroTotalCell(label: "长休息", value: formatHistoryDuration(longBreakTotal), color: phaseColor(for: .longBreak))
             }
             .padding(.vertical, Space.m)
             .nestedSurface()
+
+            weeklyGoalCard
 
             focusTrendCard
 
@@ -903,6 +998,54 @@ struct PomodoroView: View {
         }
         .padding(Space.l)
         .cardSurface()
+    }
+
+    private var weeklyGoalCard: some View {
+        let calendar = beijingCalendar
+        let now = Date()
+        let thisWeekRecords = store.pomodoroHistory.filter { record in
+            guard record.phase == .focus && record.actualDuration > 0 else { return false }
+            return calendar.isDate(record.startedAt, equalTo: now, toGranularity: .weekOfYear)
+        }
+        let thisWeekSeconds = thisWeekRecords.reduce(0.0) { $0 + $1.actualDuration }
+        let goalSeconds = max(3600.0, Double(state.weeklyFocusGoalMinutes * 60))
+        let progress = min(1.0, thisWeekSeconds / goalSeconds)
+        let percent = Int((progress * 100).rounded())
+        let achieved = thisWeekSeconds >= goalSeconds
+
+        return VStack(alignment: .leading, spacing: Space.m) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    HStack(spacing: Space.s) {
+                        Text("本周专注目标")
+                            .font(AppType.ui(Typo.body, .medium))
+                            .tracking(Tracking.heading)
+                        StatusPillBadge(
+                            title: achieved ? "已达标" : "进行中 \(percent)%",
+                            icon: achieved ? "checkmark.circle.fill" : "target",
+                            color: achieved ? Color.green : stopwatchColor
+                        )
+                    }
+                    Text("按北京时间周一至周日累计 · 包含番茄钟与正计时")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(formatHistoryDuration(thisWeekSeconds)) / \(max(1, state.weeklyFocusGoalMinutes / 60)) 小时")
+                    .font(AppType.ui(Typo.footnote, .semibold))
+                    .foregroundStyle(achieved ? Color.green : stopwatchColor)
+            }
+
+            TimeSlotProgressBar(
+                progress: CGFloat(progress),
+                color: achieved ? Color.green : stopwatchColor,
+                height: 8,
+                showsKnob: true,
+                showsMilestones: true
+            )
+        }
+        .padding(Space.l)
+        .nestedSurface()
     }
 
     private var focusTrendCard: some View {
@@ -995,6 +1138,7 @@ struct PomodoroView: View {
 
     private var taskBreakdownCard: some View {
         let items = taskBreakdown
+        let totalDuration = items.reduce(0.0) { $0 + $1.duration }
         let longest = items.first?.duration ?? 1
 
         return VStack(alignment: .leading, spacing: Space.m) {
@@ -1017,6 +1161,7 @@ struct PomodoroView: View {
             } else {
                 VStack(spacing: Space.s) {
                     ForEach(items.prefix(8), id: \.title) { item in
+                        let sharePercent = totalDuration > 0 ? Int((item.duration / totalDuration * 100).rounded()) : 0
                         HStack(spacing: Space.m) {
                             Circle()
                                 .fill(store.taskColor(for: item.title))
@@ -1031,9 +1176,14 @@ struct PomodoroView: View {
                                 height: 7,
                                 showsKnob: false
                             )
-                            Text(formatHistoryDuration(item.duration))
-                                .font(AppType.caption(Typo.caption, weight: .semibold))
-                                .frame(width: 74, alignment: .trailing)
+                            HStack(spacing: 4) {
+                                Text("\(sharePercent)%")
+                                    .font(AppType.caption(11, weight: .medium))
+                                    .foregroundStyle(.tertiary)
+                                Text(formatHistoryDuration(item.duration))
+                                    .font(AppType.caption(Typo.caption, weight: .semibold))
+                            }
+                            .frame(width: 88, alignment: .trailing)
                         }
                     }
                 }
@@ -1516,19 +1666,19 @@ struct PomodoroSettingsView: View {
                 settingRow(
                     title: "专注时长", value: $focusMinutes, range: 1...120, suffix: "分钟",
                     presets: PomodoroPresets.focus,
-                    accent: Color(hex: PomodoroPhase.focus.colorHex)
+                    accent: accent
                 )
                 Divider()
                 settingRow(
                     title: "短休息", value: $shortBreakMinutes, range: 1...30, suffix: "分钟",
                     presets: PomodoroPresets.shortBreak,
-                    accent: Color(hex: PomodoroPhase.shortBreak.colorHex)
+                    accent: Color(hex: "#2C8C7C")
                 )
                 Divider()
                 settingRow(
                     title: "长休息", value: $longBreakMinutes, range: 1...60, suffix: "分钟",
                     presets: PomodoroPresets.longBreak,
-                    accent: Color(hex: PomodoroPhase.longBreak.colorHex)
+                    accent: Color(hex: "#5A78B8")
                 )
                 Divider()
                 settingRow(
@@ -1564,7 +1714,7 @@ struct PomodoroSettingsView: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(hex: PomodoroPhase.focus.colorHex))
+                .tint(accent)
                 .keyboardShortcut(.defaultAction)
             }
         }

@@ -63,7 +63,6 @@ struct TimeSlotWedge: Shape {
         return path
     }
 }
-
 /// 字号阶梯。正文保持清晰的 12 / 13.5 / 14.5 / 17 层级，再单独处理标题和计时读数。
 enum Typo {
     static let caption: CGFloat = 12      // 单位、角标、图例
@@ -243,8 +242,6 @@ struct TimeSlotPressableStyle: ButtonStyle {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
-
-
 // MARK: - 外观模式
 
 /// 应用外观：跟随系统、强制浅色或强制深色。
@@ -289,33 +286,33 @@ enum ColorPreset: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .teal: return "青绿"
-        case .coral: return "珊瑚"
-        case .indigo: return "靛蓝"
-        case .violet: return "紫罗兰"
-        case .graphite: return "石墨"
+        case .teal: return "极光青"
+        case .coral: return "日落橙"
+        case .indigo: return "经典蓝"
+        case .violet: return "优雅紫"
+        case .graphite: return "深空灰"
         }
     }
 
-    /// 浅色外观下的主色。
+    /// 浅色外观下的主色 (Apple HIG Precision)。
     var lightHex: String {
         switch self {
-        case .teal: return "#2C8C7C"
-        case .coral: return "#C96A4E"
-        case .indigo: return "#5A78B8"
-        case .violet: return "#7B5EA7"
-        case .graphite: return "#5B6573"
+        case .teal: return "#00A396"
+        case .coral: return "#FF9500"
+        case .indigo: return "#007AFF"
+        case .violet: return "#AF52DE"
+        case .graphite: return "#8E8E93"
         }
     }
 
-    /// 深色外观下的主色：比浅色档亮一档，避免深色底上发闷。
+    /// 深色外观下的主色：通透清亮，符合 Apple Dark Mode 标准。
     var darkHex: String {
         switch self {
-        case .teal: return "#45A68F"
-        case .coral: return "#E08A6E"
-        case .indigo: return "#8098D4"
-        case .violet: return "#9D81C8"
-        case .graphite: return "#8A94A1"
+        case .teal: return "#30D1C7"
+        case .coral: return "#FF9F0A"
+        case .indigo: return "#0A84FF"
+        case .violet: return "#BF5AF2"
+        case .graphite: return "#98989D"
         }
     }
 
@@ -393,18 +390,24 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
                         }
                         Text(option.title)
                     }
-                    .font(AppType.ui(Typo.footnote, .medium))
+                    .font(AppType.ui(Typo.footnote, isSelected ? .semibold : .medium))
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 32)
                     .padding(.horizontal, Space.s)
-                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                    .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.85))
                     .background(
                         Group {
                             if isSelected {
                                 RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
-                                    .fill(tint)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [tint, tint.opacity(0.88)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
                                     .matchedGeometryEffect(id: "selection", in: selectionAnimation)
-                                    .shadow(color: tint.opacity(0.22), radius: 4, y: 1)
+                                    .shadow(color: tint.opacity(0.32), radius: 5, y: 1.5)
                             }
                         }
                     )
@@ -416,7 +419,7 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
                 .accessibilityValue(isSelected ? "已选中" : "未选中")
             }
         }
-        .padding(2)
+        .padding(3)
         .background(Surface.field, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.medium, style: .continuous)
@@ -425,13 +428,82 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
     }
 }
 
-/// 精致进度条：浅色轨道 + 品牌渐变填充。
-/// 末端用金色楔形代替圆点——进度走到哪里，「时隙」就停在哪里。
+/// 精致状态胶囊徽章：用于呈现 进行中、已暂停、已结束、紧急截止 等状态
+struct StatusPillBadge: View {
+    let title: String
+    var icon: String? = nil
+    let color: Color
+    var isPulsing: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: Space.xs) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+            } else if isPulsing {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+                    .shadow(color: color.opacity(0.6), radius: 3)
+            }
+            Text(title)
+                .font(AppType.caption(Typo.caption, weight: .semibold))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(
+            color.opacity(0.12),
+            in: Capsule()
+        )
+        .overlay(
+            Capsule()
+                .stroke(color.opacity(0.24), lineWidth: 1)
+        )
+    }
+}
+
+/// 模块化时间单元卡片：展示大号时间数值 + 单位标签（天、时、分、秒）
+struct TimeDigitBlock: View {
+    let value: String
+    let label: String
+    let color: Color
+    var minWidth: CGFloat = 64
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(AppType.timer(Typo.timerSmall + 2))
+                .tracking(Tracking.timer)
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            Text(label)
+                .font(AppType.caption(11, weight: .medium))
+                .tracking(0.3)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: minWidth)
+        .padding(.vertical, Space.s)
+        .padding(.horizontal, Space.s)
+        .background(Surface.nested, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+/// 精致进度条：浅色轨道 + 品牌渐变填充 + 金色楔形标记。
 struct TimeSlotProgressBar: View {
     let progress: CGFloat
     let color: Color
     var height: CGFloat = 8
     var showsKnob: Bool = true
+    var showsMilestones: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -442,19 +514,35 @@ struct TimeSlotProgressBar: View {
             let wedgeHeight = height * 1.55
 
             ZStack(alignment: .leading) {
+                // 背景轨道
                 Capsule()
                     .fill(Surface.track)
 
+                // 里程碑刻度线 (25%, 50%, 75%)
+                if showsMilestones {
+                    HStack(spacing: 0) {
+                        Spacer()
+                        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: height * 0.7)
+                        Spacer()
+                        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: height * 0.7)
+                        Spacer()
+                        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: height * 0.7)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                }
+
+                // 进度填充
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [color, color.opacity(0.76)],
+                            colors: [color, color.opacity(0.82)],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
                     .frame(width: width)
-                    .shadow(color: color.opacity(0.26), radius: 3, x: 0, y: 1)
+                    .shadow(color: color.opacity(0.28), radius: 3, x: 0, y: 1)
             }
             .overlay(alignment: .leading) {
                 if showsKnob, clamped > 0.02 {
@@ -467,7 +555,7 @@ struct TimeSlotProgressBar: View {
                             )
                         )
                         .frame(width: wedgeWidth, height: wedgeHeight)
-                        .shadow(color: BrandPalette.gold.opacity(0.42), radius: 3, x: 0, y: 1)
+                        .shadow(color: BrandPalette.gold.opacity(0.48), radius: 3.5, x: 0, y: 1)
                         .offset(
                             x: min(
                                 max(width - wedgeWidth * 0.55, 0),
@@ -484,8 +572,7 @@ struct TimeSlotProgressBar: View {
     }
 }
 
-/// 精致圆环：浅色轨道 + 渐变圆弧。
-/// 进度尖端落一枚金色楔形，让「现在」在圆环上也是那道时隙。
+/// 精致圆环：浅色轨道 + 渐变圆弧 + 呼吸光晕 + 品牌金色时隙楔形。
 struct TimeSlotRing: View {
     let progress: CGFloat
     let color: Color
@@ -506,22 +593,32 @@ struct TimeSlotRing: View {
             )
 
             ZStack {
+                // 外层环境柔光
+                if showsGlow && clamped > 0.01 {
+                    Circle()
+                        .stroke(color.opacity(0.12), lineWidth: lineWidth * 1.6)
+                        .blur(radius: 6)
+                }
+
+                // 底层轨道
                 Circle()
                     .stroke(Surface.track, lineWidth: lineWidth)
 
+                // 进度圆弧
                 Circle()
                     .trim(from: 0, to: clamped)
                     .stroke(
                         LinearGradient(
-                            colors: [color, color.opacity(0.80)],
+                            colors: [color, color.opacity(0.85)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .shadow(color: showsGlow ? color.opacity(0.30) : .clear, radius: 7)
+                    .shadow(color: showsGlow ? color.opacity(0.35) : .clear, radius: 8)
 
+                // 尖端金色时隙楔形
                 if clamped > 0.02 {
                     TimeSlotWedge()
                         .fill(
@@ -534,11 +631,343 @@ struct TimeSlotRing: View {
                         .frame(width: lineWidth * 0.62, height: lineWidth * 1.45)
                         .rotationEffect(.degrees(Double(clamped) * 360))
                         .position(tip)
-                        .shadow(color: BrandPalette.gold.opacity(showsGlow ? 0.45 : 0.2), radius: 3)
+                        .shadow(color: BrandPalette.gold.opacity(showsGlow ? 0.52 : 0.25), radius: 3.5)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.45), value: progress)
+    }
+}
+
+// MARK: - 庆祝彩带粒子动效 (Confetti Particle Celebration)
+
+struct ConfettiPiece: Identifiable {
+    let id = UUID()
+    let color: Color
+    let size: CGSize
+    let initialX: CGFloat
+    let initialY: CGFloat
+    let velocityX: CGFloat
+    let velocityY: CGFloat
+    let spin: Double
+    let spinSpeed: Double
+}
+
+struct ConfettiEffectView: View {
+    let isActive: Bool
+    @State private var pieces: [ConfettiPiece] = []
+    @State private var animProgress: CGFloat = 0
+
+    private let colors: [Color] = [
+        Color(hex: "#D86F52"),
+        Color(hex: "#2C8C7C"),
+        Color(hex: "#B07A3A"),
+        Color(hex: "#5A78B8"),
+        Color(hex: "#7B5EA7"),
+        Color(hex: "#E0B354")
+    ]
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                if isActive {
+                    ForEach(pieces) { piece in
+                        let progress = Double(animProgress)
+                        let currentX = piece.initialX + piece.velocityX * progress * proxy.size.width
+                        let currentY = piece.initialY + (piece.velocityY * progress + 0.5 * 9.8 * progress * progress * 0.45) * proxy.size.height
+                        let opacity = max(0, 1.0 - progress * 1.05)
+
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(piece.color)
+                            .frame(width: piece.size.width, height: piece.size.height)
+                            .rotationEffect(.degrees(piece.spin + piece.spinSpeed * progress * 360))
+                            .opacity(opacity)
+                            .position(x: currentX, y: currentY)
+                    }
+                }
+            }
+            .onAppear {
+                if isActive {
+                    generatePieces(in: proxy.size)
+                }
+            }
+            .onChange(of: isActive) { _, newValue in
+                if newValue {
+                    generatePieces(in: proxy.size)
+                    animProgress = 0
+                    withAnimation(.easeOut(duration: 2.2)) {
+                        animProgress = 1.0
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        pieces = []
+                    }
+                } else {
+                    pieces = []
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func generatePieces(in size: CGSize) {
+        var result: [ConfettiPiece] = []
+        for _ in 0..<36 {
+            let color = colors.randomElement() ?? .orange
+            let w = CGFloat.random(in: 6...11)
+            let h = CGFloat.random(in: 8...16)
+            let initX = size.width * CGFloat.random(in: 0.3...0.7)
+            let initY = size.height * CGFloat.random(in: 0.3...0.6)
+            let vx = CGFloat.random(in: -0.6...0.6)
+            let vy = CGFloat.random(in: -0.8...(-0.2))
+            let spin = Double.random(in: 0...360)
+            let speed = Double.random(in: 1.5...4.0) * (Bool.random() ? 1 : -1)
+            result.append(ConfettiPiece(
+                color: color,
+                size: CGSize(width: w, height: h),
+                initialX: initX,
+                initialY: initY,
+                velocityX: vx,
+                velocityY: vy,
+                spin: spin,
+                spinSpeed: speed
+            ))
+        }
+        pieces = result
+    }
+}
+
+// MARK: - 专注白噪音与环境音播放器 (Procedural Focus Ambience Engine)
+
+import AVFoundation
+
+public enum FocusAmbienceSound: String, CaseIterable, Identifiable {
+    case off = "关闭"
+    case brownNoise = "温暖褐噪"
+    case rain = "温润细雨"
+    case breeze = "林间微风"
+    case waves = "潮汐海浪"
+
+    public var id: String { rawValue }
+
+    public var icon: String {
+        switch self {
+        case .off: return "speaker.slash"
+        case .brownNoise: return "waveform.badge.magnifyingglass"
+        case .rain: return "cloud.drizzle.fill"
+        case .breeze: return "wind"
+        case .waves: return "water.waves"
+        }
+    }
+}
+
+@MainActor
+public final class FocusAmbiencePlayer: ObservableObject {
+    public static let shared = FocusAmbiencePlayer()
+
+    @Published public var currentSound: FocusAmbienceSound = .off
+    @Published public var volume: Float = 0.25 {
+        didSet {
+            engine?.mainMixerNode.outputVolume = volume
+            UserDefaults.standard.set(volume, forKey: "timeslot_ambience_volume")
+        }
+    }
+
+    private var engine: AVAudioEngine?
+    private var playerNode: AVAudioPlayerNode?
+
+    private init() {
+        let savedVol = UserDefaults.standard.float(forKey: "timeslot_ambience_volume")
+        self.volume = savedVol > 0 ? savedVol : 0.25
+    }
+
+    public func selectSound(_ sound: FocusAmbienceSound) {
+        if sound == currentSound { return }
+        currentSound = sound
+        if sound == .off {
+            stop()
+        } else {
+            start(sound: sound)
+        }
+    }
+
+    public func toggle() {
+        if currentSound == .off {
+            selectSound(.rain)
+        } else {
+            selectSound(.off)
+        }
+    }
+
+    public func stop() {
+        playerNode?.stop()
+        if let player = playerNode {
+            engine?.detach(player)
+        }
+        engine?.stop()
+        engine?.reset()
+        playerNode = nil
+        engine = nil
+        malloc_zone_pressure_relief(nil, 0)
+    }
+
+    private func start(sound: FocusAmbienceSound) {
+        stop()
+
+        let newEngine = AVAudioEngine()
+        let newPlayer = AVAudioPlayerNode()
+        newEngine.attach(newPlayer)
+
+        let sampleRate: Double = 44100
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2),
+              let buffer = createNoiseBuffer(for: sound, format: format, duration: 2.0) else {
+            return
+        }
+
+        newEngine.connect(newPlayer, to: newEngine.mainMixerNode, format: format)
+        newEngine.mainMixerNode.outputVolume = volume
+
+        do {
+            try newEngine.start()
+            newPlayer.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
+            newPlayer.play()
+            self.engine = newEngine
+            self.playerNode = newPlayer
+        } catch {
+            print("Failed to start ambience engine: \(error)")
+        }
+    }
+
+    private func createNoiseBuffer(for sound: FocusAmbienceSound, format: AVAudioFormat, duration: Double) -> AVAudioPCMBuffer? {
+        let frameCount = AVAudioFrameCount(format.sampleRate * duration)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+
+        guard let leftChannel = buffer.floatChannelData?[0],
+              let rightChannel = buffer.floatChannelData?[1] else {
+            return nil
+        }
+
+        let totalFrames = Int(frameCount)
+        let sampleRateFloat = Float(format.sampleRate)
+
+        var brownL: Float = 0
+        var brownR: Float = 0
+        var lpL: Float = 0
+        var lpR: Float = 0
+
+        // 预热滤波器以消除启动突变音
+        for _ in 0..<2000 {
+            let wL = Float.random(in: -1...1)
+            let wR = Float.random(in: -1...1)
+            brownL = (brownL + (0.02 * wL)) / 1.02
+            brownR = (brownR + (0.02 * wR)) / 1.02
+            lpL += 0.05 * (brownL - lpL)
+            lpR += 0.05 * (brownR - lpR)
+        }
+
+        for i in 0..<totalFrames {
+            var sampleLeft: Float = 0
+            var sampleRight: Float = 0
+
+            let whiteL = Float.random(in: -1...1)
+            let whiteR = Float.random(in: -1...1)
+
+            switch sound {
+            case .brownNoise:
+                // 温暖褐噪：极柔和深沉的低频背景，彻底削减刺耳高频，如高级降噪耳机的温暖舒缓音
+                brownL = (brownL + (0.015 * whiteL)) / 1.015
+                brownR = (brownR + (0.015 * whiteR)) / 1.015
+                lpL += 0.04 * (brownL - lpL)
+                lpR += 0.04 * (brownR - lpR)
+                sampleLeft = lpL * 0.42
+                sampleRight = lpR * 0.42
+
+            case .rain:
+                // 温润细雨：经过双重低通的柔和雨幕，过滤刺耳尖锐白噪，带轻盈微水滴
+                brownL = (brownL + (0.035 * whiteL)) / 1.035
+                brownR = (brownR + (0.035 * whiteR)) / 1.035
+                lpL += 0.07 * (brownL - lpL)
+                lpR += 0.07 * (brownR - lpR)
+
+                let dropL: Float = Float.random(in: 0...1) > 0.998 ? Float.random(in: 0.02...0.05) : 0
+                let dropR: Float = Float.random(in: 0...1) > 0.998 ? Float.random(in: 0.02...0.05) : 0
+
+                sampleLeft = (lpL * 0.32) + dropL
+                sampleRight = (lpR * 0.32) + dropR
+
+            case .breeze:
+                // 林间微风：慢周期低频轻语，如清风拂过树梢
+                let t = Float(i) / sampleRateFloat
+                let mod = 0.5 + 0.5 * sin(2.0 * .pi * 0.25 * t)
+                brownL = (brownL + (0.025 * whiteL)) / 1.025
+                brownR = (brownR + (0.025 * whiteR)) / 1.025
+                lpL += (0.03 + 0.02 * mod) * (brownL - lpL)
+                lpR += (0.03 + 0.02 * mod) * (brownR - lpR)
+                sampleLeft = lpL * (0.22 + 0.12 * mod)
+                sampleRight = lpR * (0.22 + 0.12 * mod)
+
+            case .waves:
+                // 潮汐海浪：深沉缓慢起伏的自然海浪潮涌
+                let t = Float(i) / sampleRateFloat
+                let waveMod = pow(max(0, sin(2.0 * .pi * 0.12 * t)), 2)
+                brownL = (brownL + (0.022 * whiteL)) / 1.022
+                brownR = (brownR + (0.022 * whiteR)) / 1.022
+                lpL += (0.02 + 0.04 * waveMod) * (brownL - lpL)
+                lpR += (0.02 + 0.04 * waveMod) * (brownR - lpR)
+                sampleLeft = lpL * (0.14 + 0.28 * waveMod)
+                sampleRight = lpR * (0.14 + 0.28 * waveMod)
+
+            case .off:
+                sampleLeft = 0
+                sampleRight = 0
+            }
+
+            // 边缘交叉淡入淡出（防止循环接缝爆音）
+            let fadeFrames = 4410
+            var gain: Float = 1.0
+            if i < fadeFrames {
+                gain = Float(i) / Float(fadeFrames)
+            } else if i > totalFrames - fadeFrames {
+                gain = Float(totalFrames - i) / Float(fadeFrames)
+            }
+
+            leftChannel[i] = sampleLeft * gain
+            rightChannel[i] = sampleRight * gain
+        }
+
+        return buffer
+    }
+}
+
+// MARK: - 提示声音效管理器
+
+public enum SoundEffectPreset: String, CaseIterable, Identifiable {
+    case glass = "清脆水晶"
+    case ping = "经典提示"
+    case tink = "轻快敲击"
+    case submarine = "深潜声呐"
+    case hero = "凯旋号角"
+    case purr = "柔和猫鸣"
+
+    public var id: String { rawValue }
+
+    public var systemSoundName: String {
+        switch self {
+        case .glass: return "Glass"
+        case .ping: return "Ping"
+        case .tink: return "Tink"
+        case .submarine: return "Submarine"
+        case .hero: return "Hero"
+        case .purr: return "Purr"
+        }
+    }
+
+    public func play() {
+        if let sound = NSSound(named: systemSoundName) {
+            sound.play()
+        } else {
+            NSSound.beep()
+        }
     }
 }
