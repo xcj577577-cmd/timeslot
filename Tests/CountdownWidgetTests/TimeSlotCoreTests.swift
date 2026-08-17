@@ -209,6 +209,57 @@ final class TimeSlotCoreTests: XCTestCase {
         // 1752000000 = 2025-07-08 18:40 UTC = 北京 2025-07-09 02:40
         XCTAssertTrue(formatted.contains("2:40"), formatted)
     }
+
+    func testHistoryWeekBoundsUseBeijingMondayToSunday() throws {
+        let selectedDate = try XCTUnwrap(beijingCalendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 19, hour: 12
+        )))
+        let expectedStart = try XCTUnwrap(beijingCalendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 17
+        )))
+        let expectedEnd = try XCTUnwrap(beijingCalendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 24
+        )))
+
+        let bounds = try XCTUnwrap(PomodoroHistoryRangePolicy.bounds(
+            for: .week,
+            now: selectedDate,
+            selectedWeekStart: selectedDate,
+            customStart: selectedDate,
+            customEnd: selectedDate
+        ))
+
+        XCTAssertEqual(bounds.start, expectedStart)
+        XCTAssertEqual(bounds.end, expectedEnd)
+    }
+
+    func testHistoryWeekPresetsIncludeCurrentAndRecordedWeeksOnce() throws {
+        let now = try XCTUnwrap(beijingCalendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 19, hour: 12
+        )))
+        let recordedDates = try [
+            DateComponents(year: 2026, month: 8, day: 12, hour: 9),
+            DateComponents(year: 2026, month: 8, day: 10, hour: 20),
+            DateComponents(year: 2026, month: 8, day: 3, hour: 8)
+        ].map { components in
+            try XCTUnwrap(beijingCalendar.date(from: components))
+        }
+        let expected = try [
+            DateComponents(year: 2026, month: 8, day: 17),
+            DateComponents(year: 2026, month: 8, day: 10),
+            DateComponents(year: 2026, month: 8, day: 3)
+        ].map { components in
+            try XCTUnwrap(beijingCalendar.date(from: components))
+        }
+
+        XCTAssertEqual(
+            PomodoroHistoryRangePolicy.availableWeekStarts(
+                recordDates: recordedDates,
+                now: now
+            ),
+            expected
+        )
+    }
 }
 
 

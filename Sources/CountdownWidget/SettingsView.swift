@@ -42,7 +42,7 @@ struct AppSettingsPage: View {
                         .foregroundStyle(.secondary)
                 }
 
-                settingsCard(title: "声音与专注音效", icon: "speaker.wave.2.fill") {
+                settingsCard(title: "声音与提醒", icon: "speaker.wave.2.fill") {
                     Toggle(isOn: soundsBinding) {
                         settingLabel(title: "阶段结束提示音", subtitle: "倒计时到达或番茄钟阶段结束时播放声音")
                     }
@@ -75,45 +75,6 @@ struct AppSettingsPage: View {
                             .help("试听当前提示音")
                         }
                         .padding(.vertical, 4)
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: Space.s) {
-                        HStack(spacing: Space.s) {
-                            Text("专注背景白噪音")
-                                .font(AppType.ui(Typo.footnote, .medium))
-                            Spacer()
-                            Picker("白噪音类型", selection: Binding(
-                                get: { FocusAmbiencePlayer.shared.currentSound },
-                                set: { FocusAmbiencePlayer.shared.selectSound($0) }
-                            )) {
-                                ForEach(FocusAmbienceSound.allCases) { sound in
-                                    Text(sound.rawValue).tag(sound)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .labelsHidden()
-                            .frame(width: 120)
-                        }
-
-                        if FocusAmbiencePlayer.shared.currentSound != .off {
-                            HStack(spacing: Space.m) {
-                                Image(systemName: "speaker.wave.2.fill")
-                                    .font(AppType.caption())
-                                    .foregroundStyle(.secondary)
-                                Slider(value: Binding(
-                                    get: { FocusAmbiencePlayer.shared.volume },
-                                    set: { FocusAmbiencePlayer.shared.volume = $0 }
-                                ), in: 0...1)
-                                Text("\(Int(FocusAmbiencePlayer.shared.volume * 100))%")
-                                    .font(AppType.caption())
-                                    .monospacedDigit()
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 32, alignment: .trailing)
-                            }
-                            .padding(.top, 2)
-                        }
                     }
 
                     Divider()

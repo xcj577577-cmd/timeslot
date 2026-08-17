@@ -170,6 +170,18 @@ outputs/                   User guide, privacy policy, and release materials
 
 The current release is signed with an Apple Development certificate and is not notarized. macOS may show a security warning the first time it opens. For long-term distribution to other Macs, use a Developer ID certificate and complete notarization instead of bypassing Gatekeeper by removing quarantine attributes.
 
+## Gatekeeper feedback and resolution (Issue #1)
+
+Thank you to [@ixhsia](https://github.com/ixhsia) for reporting the “unable to verify” problem and providing reproduction details.
+
+The root cause is that the current GitHub release uses an Apple Development certificate and has not been notarized. That is suitable for local development and testing, but not for distributing an installable app to unfamiliar Macs, so macOS Gatekeeper may show a verification warning.
+
+The proper fix is to sign both the app and its desktop widget with `Developer ID Application`, submit the package to Apple Notary Service, and publish the notarized ZIP/DMG on GitHub. Disabling Gatekeeper or deleting `com.apple.quarantine` only weakens macOS security; it is not the official fix.
+
+Until the notarized build is published, you can test the app on your own Mac by right-clicking `时隙.app` in Finder and choosing **Open**, or by choosing **Open Anyway** in System Settings → Privacy & Security.
+
+The `main` branch also includes the latest functional updates: the white-noise feature has been removed, and Pomodoro statistics now support weekly views and preset weeks.
+
 ## Contributing
 
 Use [GitHub Issues](https://github.com/xcj577577-cmd/timeslot/issues) to report bugs, suggest improvements, or discuss contributions. Before submitting code, run `swift test --disable-sandbox`; for release-related changes, also run `./scripts/verify-release.sh`.

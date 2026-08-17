@@ -298,6 +298,7 @@ enum PomodoroRecordStatus: String, Codable {
 enum PomodoroHistoryRange: String, CaseIterable, Identifiable {
     case all
     case today
+    case week
     case last7Days
     case thisMonth
     case custom
@@ -308,10 +309,78 @@ enum PomodoroHistoryRange: String, CaseIterable, Identifiable {
         switch self {
         case .all: return "全部"
         case .today: return "今天"
+        case .week: return "按周"
         case .last7Days: return "近 7 天"
         case .thisMonth: return "本月"
         case .custom: return "自定义"
         }
+    }
+}
+
+struct PomodoroHistoryBounds: Equatable {
+    let start: Date
+    let end: Date
+}
+
+enum PomodoroHistoryRangePolicy {
+    static func weekStart(containing date: Date, calendar: Calendar = beijingCalendar) -> Date {
+        let day = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: day)
+        let daysSinceMonday = (weekday + 5) % 7
+        return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
+    }
+
+    static func bounds(
+        for range: PomodoroHistoryRange,
+        now: Date,
+        selectedWeekStart: Date,
+        customStart: Date,
+        customEnd: Date,
+        calendar: Calendar = beijingCalendar
+    ) -> PomodoroHistoryBounds? {
+        switch range {
+        case .all:
+            return nil
+        case .today:
+            let start = calendar.startOfDay(for: now)
+            let end = calendar.date(byAdding: .day, value: 1, to: start)
+                ?? start.addingTimeInterval(86_400)
+            return PomodoroHistoryBounds(start: start, end: end)
+        case .week:
+            let start = weekStart(containing: selectedWeekStart, calendar: calendar)
+            let end = calendar.date(byAdding: .day, value: 7, to: start)
+                ?? start.addingTimeInterval(7 * 86_400)
+            return PomodoroHistoryBounds(start: start, end: end)
+        case .last7Days:
+            let today = calendar.startOfDay(for: now)
+            let start = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+            let end = calendar.date(byAdding: .day, value: 1, to: today)
+                ?? today.addingTimeInterval(86_400)
+            return PomodoroHistoryBounds(start: start, end: end)
+        case .thisMonth:
+            let start = calendar.date(
+                from: calendar.dateComponents([.year, .month], from: now)
+            ) ?? calendar.startOfDay(for: now)
+            let end = calendar.date(byAdding: .month, value: 1, to: start)
+                ?? start.addingTimeInterval(31 * 86_400)
+            return PomodoroHistoryBounds(start: start, end: end)
+        case .custom:
+            let start = calendar.startOfDay(for: min(customStart, customEnd))
+            let lastDay = calendar.startOfDay(for: max(customStart, customEnd))
+            let end = calendar.date(byAdding: .day, value: 1, to: lastDay)
+                ?? lastDay.addingTimeInterval(86_400)
+            return PomodoroHistoryBounds(start: start, end: end)
+        }
+    }
+
+    static func availableWeekStarts(
+        recordDates: [Date],
+        now: Date,
+        calendar: Calendar = beijingCalendar
+    ) -> [Date] {
+        var starts = Set(recordDates.map { weekStart(containing: $0, calendar: calendar) })
+        starts.insert(weekStart(containing: now, calendar: calendar))
+        return starts.sorted(by: >)
     }
 }
 

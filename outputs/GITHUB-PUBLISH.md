@@ -83,6 +83,8 @@ shasum -a 256 -c outputs/SHA256SUMS-v2.2.0-build52.txt
 
 在干净的 macOS 14+ 上下载 ZIP 或 DMG，核对 SHA-256，再拖入「应用程序」。当前包是 Apple Development 签名、未经公证：首次打开可能被 Gatekeeper 拦住。不要教用户 `xattr -cr` 去隔离属性。需要公开分发给陌生人时，再补 Developer ID 与公证。
 
+Issue #1 已记录这一情况。感谢 @ixhsia 提供复现信息；正式解决方式是使用 Developer ID Application 签名并完成 Apple 公证，不能把关闭 Gatekeeper 或删除 quarantine 属性当作正式方案。
+
 ## 仓库设置建议
 
 - About：`原生 macOS 倒计时与番茄钟，桌面小组件驻留在桌面层。`

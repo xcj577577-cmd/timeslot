@@ -170,6 +170,18 @@ outputs/                   使用说明、隐私政策、品牌资产与发布�
 
 当前发行包使用 Apple Development 证书签名，尚未完成 Apple 公证；首次打开可能出现 macOS 安全提示。面向陌生设备长期分发时，建议改用 Developer ID 签名并完成公证，不要通过移除隔离属性绕过 Gatekeeper。
 
+## Gatekeeper 反馈与处理（Issue #1）
+
+感谢 [@ixhsia](https://github.com/ixhsia) 提交「关于出现无法验证情况的若干问题」并提供复现信息。
+
+问题根因是当前 GitHub 发行包使用 Apple Development 证书、尚未完成 Apple 公证。它适合本机开发验证，但不适合作为面向陌生 Mac 的公开安装包，因此 macOS Gatekeeper 可能显示“无法验证”或“无法打开”。
+
+正式解决方式是：使用 `Developer ID Application` 对主应用和桌面小组件进行签名，再提交 Apple Notary Service 公证，并将公证后的 ZIP/DMG 发布到 GitHub。临时关闭 Gatekeeper 或删除 `com.apple.quarantine` 只是降低安全保护的绕过方式，不是正式修复。
+
+在公证版发布前，如需在自己的 Mac 上测试，可在 Finder 中右键「时隙.app」选择“打开”，或在系统设置的“隐私与安全性”中选择“仍要打开”。
+
+主分支同时已同步最新功能修复：移除白噪音功能，并在番茄钟统计中增加按周查看与周预设。
+
 ## 参与贡献
 
 欢迎通过 [GitHub Issues](https://github.com/xcj577577-cmd/timeslot/issues) 反馈问题、提出建议或提交改进。提交代码前，请先运行 `swift test --disable-sandbox`，涉及发行流程时再运行 `./scripts/verify-release.sh`。

@@ -38,6 +38,7 @@ struct PomodoroView: View {
     @State private var historyRange: PomodoroHistoryRange
     @State private var customHistoryStart: Date
     @State private var customHistoryEnd: Date
+    @State private var selectedWeekStart: Date
     @State private var showingAllHistory = false
     @State private var showingClearHistoryConfirmation = false
     @State private var showingResetConfirmation = false
@@ -53,6 +54,9 @@ struct PomodoroView: View {
             initialValue: beijingCalendar.date(byAdding: .day, value: -6, to: Date()) ?? Date()
         )
         _customHistoryEnd = State(initialValue: Date())
+        _selectedWeekStart = State(
+            initialValue: PomodoroHistoryRangePolicy.weekStart(containing: Date())
+        )
         // 正计时进行中时，重启应用也要回到正计时页面，避免计时器在后台偷偷走。
         let storedMode = countdownDefaults
             .string(forKey: "pomodoroTimerMode")
@@ -80,29 +84,21 @@ struct PomodoroView: View {
 
     // 这些范围都是「天」的粒度，跟着渲染时刻取一次就够，不需要每秒重算。
     private var historyBounds: (start: Date, end: Date)? {
-        let calendar = beijingCalendar
-        let now = Date()
-        switch historyRange {
-        case .all:
-            return nil
-        case .today:
-            let start = calendar.startOfDay(for: now)
-            return (start, calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86400))
-        case .last7Days:
-            let today = calendar.startOfDay(for: now)
-            let start = calendar.date(byAdding: .day, value: -6, to: today) ?? today
-            let end = calendar.date(byAdding: .day, value: 1, to: today) ?? today.addingTimeInterval(86400)
-            return (start, end)
-        case .thisMonth:
-            let start = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? calendar.startOfDay(for: now)
-            let end = calendar.date(byAdding: .month, value: 1, to: start) ?? start.addingTimeInterval(31 * 86400)
-            return (start, end)
-        case .custom:
-            let startDay = calendar.startOfDay(for: min(customHistoryStart, customHistoryEnd))
-            let endDay = calendar.startOfDay(for: max(customHistoryStart, customHistoryEnd))
-            let end = calendar.date(byAdding: .day, value: 1, to: endDay) ?? endDay.addingTimeInterval(86400)
-            return (startDay, end)
-        }
+        guard let bounds = PomodoroHistoryRangePolicy.bounds(
+            for: historyRange,
+            now: Date(),
+            selectedWeekStart: selectedWeekStart,
+            customStart: customHistoryStart,
+            customEnd: customHistoryEnd
+        ) else { return nil }
+        return (bounds.start, bounds.end)
+    }
+
+    private var availableWeekStarts: [Date] {
+        PomodoroHistoryRangePolicy.availableWeekStarts(
+            recordDates: store.pomodoroHistory.map(\.startedAt),
+            now: Date()
+        )
     }
 
     private var filteredHistoryRecords: [PomodoroSessionRecord] {
@@ -304,6 +300,9 @@ struct PomodoroView: View {
         .onChange(of: historyRange) {
             showingAllHistory = false
             countdownDefaults.set(historyRange.rawValue, forKey: "pomodoroHistoryRange")
+        }
+        .onChange(of: selectedWeekStart) {
+            showingAllHistory = false
         }
         .onChange(of: timerMode) { _, newMode in
             countdownDefaults.set(newMode.rawValue, forKey: "pomodoroTimerMode")
@@ -711,10 +710,6 @@ struct PomodoroView: View {
                     .controlSize(.regular)
                 }
             }
-
-            Divider().frame(width: 220).opacity(0.3)
-
-            focusAmbienceControlBar
         }
         .frame(maxWidth: .infinity, minHeight: 450)
         .padding(.horizontal, Space.l)
@@ -752,49 +747,6 @@ struct PomodoroView: View {
                 }
                 .buttonStyle(TimeSlotPressableStyle())
                 .disabled(state.isRunning)
-            }
-        }
-    }
-
-    private var focusAmbienceControlBar: some View {
-        HStack(spacing: Space.m) {
-            Menu {
-                ForEach(FocusAmbienceSound.allCases) { sound in
-                    Button {
-                        FocusAmbiencePlayer.shared.selectSound(sound)
-                    } label: {
-                        Label(sound.rawValue, systemImage: sound.icon)
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: FocusAmbiencePlayer.shared.currentSound.icon)
-                        .foregroundStyle(FocusAmbiencePlayer.shared.currentSound == .off ? Color.secondary : phaseColor)
-                    Text(FocusAmbiencePlayer.shared.currentSound.rawValue)
-                        .font(AppType.caption(12, weight: .medium))
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(AppType.caption(9))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Surface.nested, in: Capsule())
-            }
-            .buttonStyle(.plain)
-
-            if FocusAmbiencePlayer.shared.currentSound != .off {
-                HStack(spacing: 4) {
-                    Image(systemName: "speaker.wave.1.fill")
-                        .font(AppType.caption(10))
-                        .foregroundStyle(.secondary)
-                    Slider(value: Binding(
-                        get: { FocusAmbiencePlayer.shared.volume },
-                        set: { FocusAmbiencePlayer.shared.volume = $0 }
-                    ), in: 0...1)
-                    .frame(width: 64)
-                    .controlSize(.mini)
-                }
-                .transition(.scale.combined(with: .opacity))
             }
         }
     }
@@ -1003,21 +955,34 @@ struct PomodoroView: View {
     private var weeklyGoalCard: some View {
         let calendar = beijingCalendar
         let now = Date()
-        let thisWeekRecords = store.pomodoroHistory.filter { record in
-            guard record.phase == .focus && record.actualDuration > 0 else { return false }
-            return calendar.isDate(record.startedAt, equalTo: now, toGranularity: .weekOfYear)
+        let currentWeekStart = PomodoroHistoryRangePolicy.weekStart(
+            containing: now,
+            calendar: calendar
+        )
+        let currentWeekEnd = calendar.date(byAdding: .day, value: 7, to: currentWeekStart)
+            ?? currentWeekStart.addingTimeInterval(7 * 86_400)
+        let selectedBounds = historyRange == .week ? historyBounds : nil
+        let goalBounds = selectedBounds ?? (start: currentWeekStart, end: currentWeekEnd)
+        let isCurrentWeek = goalBounds.start == currentWeekStart
+        let weekRecords = store.pomodoroHistory.filter { record in
+            record.phase == .focus
+                && record.actualDuration > 0
+                && record.endedAt > goalBounds.start
+                && record.startedAt < goalBounds.end
         }
-        let thisWeekSeconds = thisWeekRecords.reduce(0.0) { $0 + $1.actualDuration }
+        let weekSeconds = weekRecords.reduce(0.0) {
+            $0 + displayedDuration(for: $1, within: goalBounds)
+        }
         let goalSeconds = max(3600.0, Double(state.weeklyFocusGoalMinutes * 60))
-        let progress = min(1.0, thisWeekSeconds / goalSeconds)
+        let progress = min(1.0, weekSeconds / goalSeconds)
         let percent = Int((progress * 100).rounded())
-        let achieved = thisWeekSeconds >= goalSeconds
+        let achieved = weekSeconds >= goalSeconds
 
         return VStack(alignment: .leading, spacing: Space.m) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     HStack(spacing: Space.s) {
-                        Text("本周专注目标")
+                        Text(isCurrentWeek ? "本周专注目标" : "所选周专注目标")
                             .font(AppType.ui(Typo.body, .medium))
                             .tracking(Tracking.heading)
                         StatusPillBadge(
@@ -1026,12 +991,16 @@ struct PomodoroView: View {
                             color: achieved ? Color.green : stopwatchColor
                         )
                     }
-                    Text("按北京时间周一至周日累计 · 包含番茄钟与正计时")
+                    Text(
+                        isCurrentWeek
+                            ? "按北京时间周一至周日累计 · 包含番茄钟与正计时"
+                            : "\(historyRangeSummary) · 包含番茄钟与正计时"
+                    )
                         .font(AppType.caption())
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(formatHistoryDuration(thisWeekSeconds)) / \(max(1, state.weeklyFocusGoalMinutes / 60)) 小时")
+                Text("\(formatHistoryDuration(weekSeconds)) / \(max(1, state.weeklyFocusGoalMinutes / 60)) 小时")
                     .font(AppType.ui(Typo.footnote, .semibold))
                     .foregroundStyle(achieved ? Color.green : stopwatchColor)
             }
@@ -1207,7 +1176,22 @@ struct PomodoroView: View {
                 tint: stopwatchColor
             )
 
-            if historyRange == .custom {
+            if historyRange == .week {
+                HStack(spacing: Space.m) {
+                    Label("选择周", systemImage: "calendar")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                    Spacer()
+                    Picker("选择周", selection: $selectedWeekStart) {
+                        ForEach(availableWeekStarts, id: \.self) { weekStart in
+                            Text(weekOptionTitle(weekStart)).tag(weekStart)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(minWidth: 220)
+                    .accessibilityIdentifier("timeslot.pomodoro.history.week")
+                }
+            } else if historyRange == .custom {
                 HStack(spacing: Space.l) {
                     DatePicker("开始日期", selection: $customHistoryStart, displayedComponents: [.date])
                     DatePicker("结束日期", selection: $customHistoryEnd, displayedComponents: [.date])
@@ -1219,6 +1203,30 @@ struct PomodoroView: View {
         .nestedSurface()
     }
 
+    private func weekOptionTitle(_ weekStart: Date) -> String {
+        let calendar = beijingCalendar
+        let normalizedStart = PomodoroHistoryRangePolicy.weekStart(
+            containing: weekStart,
+            calendar: calendar
+        )
+        let currentWeek = PomodoroHistoryRangePolicy.weekStart(
+            containing: Date(),
+            calendar: calendar
+        )
+        let previousWeek = calendar.date(byAdding: .day, value: -7, to: currentWeek)
+        let lastDay = calendar.date(byAdding: .day, value: 6, to: normalizedStart)
+            ?? normalizedStart.addingTimeInterval(6 * 86_400)
+        let dateRange = "\(beijingDateString(normalizedStart, dateStyle: .abbreviated, timeStyle: .omitted)) – \(beijingDateString(lastDay, dateStyle: .abbreviated, timeStyle: .omitted))"
+
+        if normalizedStart == currentWeek {
+            return "本周 · \(dateRange)"
+        }
+        if normalizedStart == previousWeek {
+            return "上周 · \(dateRange)"
+        }
+        return dateRange
+    }
+
     private var historyRangeSummary: String {
         guard let bounds = historyBounds else { return "全部历史记录" }
         let calendar = beijingCalendar
@@ -1227,7 +1235,14 @@ struct PomodoroView: View {
     }
 
     private func displayedDuration(for record: PomodoroSessionRecord) -> TimeInterval {
-        guard let bounds = historyBounds else { return record.actualDuration }
+        displayedDuration(for: record, within: historyBounds)
+    }
+
+    private func displayedDuration(
+        for record: PomodoroSessionRecord,
+        within bounds: (start: Date, end: Date)?
+    ) -> TimeInterval {
+        guard let bounds else { return record.actualDuration }
         let overlapStart = max(record.startedAt, bounds.start)
         let overlapEnd = min(record.endedAt, bounds.end)
         let overlap = max(0, overlapEnd.timeIntervalSince(overlapStart))

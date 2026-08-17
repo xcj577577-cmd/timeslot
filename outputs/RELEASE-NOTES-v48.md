@@ -7,7 +7,9 @@
 ## 首次打开提示（Gatekeeper）
 本版本为 Apple Development 签名、未经公证，直接从 GitHub 下载后首次打开可能被 Gatekeeper 拦截：
 - Finder 中右键「时隙.app」→ 打开 → 确认打开
-- 或终端执行：`xattr -d com.apple.quarantine /Applications/时隙.app`
+- 也可以在系统设置的“隐私与安全性”中选择“仍要打开”
+
+正式发布应使用 Developer ID Application 签名并完成 Apple 公证；不要通过关闭 Gatekeeper 或删除隔离属性来绕过安全检查。
 
 ## 系统要求
 - macOS 14.0 及以上（Apple Silicon / Intel 通用二进制）
