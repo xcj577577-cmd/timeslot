@@ -41,10 +41,12 @@ struct PomodoroView: View {
     @State private var selectedWeekStart: Date
     @State private var showingAllHistory = false
     @State private var showingClearHistoryConfirmation = false
+    @State private var editingRecord: PomodoroSessionRecord?
     @State private var showingResetConfirmation = false
     @State private var timerMode: PomodoroTimerMode
     @State private var workspace: Workspace = .focus
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     init(store: CountdownStore, onSyncWidget: @escaping () -> Void) {
         self.store = store
@@ -72,10 +74,11 @@ struct PomodoroView: View {
     private var accent: Color { store.accentPreset.color }
 
     private func phaseColor(for phase: PomodoroPhase) -> Color {
+        let preset = store.accentPreset
         switch phase {
         case .focus: return accent
-        case .shortBreak: return Color(hex: "#2C8C7C")
-        case .longBreak: return Color(hex: "#5A78B8")
+        case .shortBreak: return Color(hex: preset.breakHex)
+        case .longBreak: return Color(hex: preset.longBreakHex)
         }
     }
 
@@ -187,13 +190,13 @@ struct PomodoroView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: Space.xs) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("番茄钟")
-                        .font(AppType.caption(Typo.body, weight: .medium))
+                        .font(AppType.caption())
                         .foregroundStyle(.secondary)
                     Text(state.taskTitle.isEmpty ? "专注当前任务" : state.taskTitle)
-                        .font(AppType.pageTitle())
-                        .tracking(Tracking.pageTitle)
+                        .font(AppType.pageTitle(28))
+                        .tracking(-0.4)
                         .lineLimit(1)
                 }
                 Spacer()
@@ -201,7 +204,7 @@ struct PomodoroView: View {
                     Circle()
                         .fill(
                             (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning)
-                            ? (timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                            ? Color.primary
                             : Color.secondary.opacity(0.42)
                         )
                         .frame(width: 6, height: 6)
@@ -217,15 +220,24 @@ struct PomodoroView: View {
                     presentedSheet = .tasks
                 } label: {
                     Label("任务", systemImage: "checklist")
+                        .font(AppType.ui(12.5, .medium))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .foregroundStyle(.primary.opacity(0.78))
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(TimeSlotPressableStyle())
+                .inkPill()
                 .accessibilityIdentifier("timeslot.pomodoro.tasks")
 
                 Button(action: onSyncWidget) {
                     Label("设为小组件内容", systemImage: "rectangle.3.group")
+                        .font(AppType.ui(12.5, .medium))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .foregroundStyle(.primary.opacity(0.78))
                 }
-                .buttonStyle(.bordered)
-                .tint(phaseColor)
+                .buttonStyle(TimeSlotPressableStyle())
+                .inkPill()
                 .accessibilityIdentifier("timeslot.pomodoro.widget-sync")
             }
             .padding(.horizontal, Space.xxl)
@@ -251,15 +263,37 @@ struct PomodoroView: View {
         }
         .background(
             LinearGradient(
-                colors: [phaseColor.opacity(0.05), Color.clear],
+                colors: [Color.primary.opacity(0.04), Color.clear],
                 startPoint: .topLeading,
                 endPoint: .center
             )
         )
+        .background {
+            StarField(density: 26)
+        }
+        .sheet(item: $editingRecord) { record in
+            PomodoroHistoryEditSheet(
+                record: record,
+                tasks: store.pomodoroTasks,
+                phaseTitle: record.phase.title
+            ) { startedAt, endedAt, taskTitle in
+                store.updatePomodoroHistoryRecord(
+                    id: record.id,
+                    startedAt: startedAt,
+                    endedAt: endedAt,
+                    taskTitle: taskTitle
+                )
+            }
+        }
         .sheet(item: $presentedSheet) { sheet in
             switch sheet {
             case .settings:
-                PomodoroSettingsView(state: state, accent: store.accentPreset.color) { focus, shortBreak, longBreak, rounds, weeklyGoalHours in
+                PomodoroSettingsView(
+                    state: state,
+                    accent: store.accentPreset.color,
+                    breakAccent: Color(hex: store.accentPreset.breakHex),
+                    longBreakAccent: Color(hex: store.accentPreset.longBreakHex)
+                ) { focus, shortBreak, longBreak, rounds, weeklyGoalHours in
                     store.updatePomodoroSettings(
                         focusMinutes: focus,
                         shortBreakMinutes: shortBreak,
@@ -321,6 +355,7 @@ struct PomodoroView: View {
                     .padding(.horizontal, Space.xxl)
                     .padding(.bottom, Space.xxl)
             }
+            .scrollIndicators(.hidden)
             .accessibilityIdentifier("timeslot.pomodoro.focus-workspace")
         case .insights:
             ScrollView {
@@ -328,56 +363,101 @@ struct PomodoroView: View {
                     .padding(.horizontal, Space.xxl)
                     .padding(.bottom, Space.xxl)
             }
+            .scrollIndicators(.hidden)
             .accessibilityIdentifier("timeslot.pomodoro.insights-workspace")
         }
     }
 
     private var focusWorkspace: some View {
-        HStack(alignment: .top, spacing: Space.l) {
+        HStack(alignment: .top, spacing: 0) {
             timerCard
                 .frame(maxWidth: .infinity)
 
-            Group {
-                if timerMode == .stopwatch {
-                    VStack(spacing: Space.m) {
-                        taskPickerCard
-                        stopwatchInfoCard
-                    }
-                } else {
-                    VStack(spacing: Space.m) {
-                        taskPickerCard
-                        sessionProgress
-                        rhythmCard
-                    }
-                }
-            }
-            .frame(width: 286)
+            Divider()
+                .padding(.vertical, Space.xl)
+
+            infoPanel
+                .frame(width: 272)
         }
+        .background {
+            StarField(density: 44)
+        }
+        .background(alignment: .top) {
+            TimelineView(.animation(minimumInterval: reduceMotion ? 10 : 0.2)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                let breath = 0.7 + 0.3 * sin(t * 0.7)
+                Circle()
+                    .fill(
+                        (timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                            .opacity(colorScheme == .dark ? 0.14 : 0.11)
+                    )
+                    .frame(width: 380, height: 380)
+                    .blur(radius: 110)
+                    .scaleEffect(CGFloat(breath))
+                    .opacity(0.35 + 0.65 * CGFloat(breath))
+                    .offset(y: -180)
+                    .allowsHitTesting(false)
+            }
+        }
+        .background(alignment: .bottomTrailing) {
+            TimelineView(.animation(minimumInterval: reduceMotion ? 10 : 0.2)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                let breath = 0.75 + 0.25 * sin(t * 0.5 + 2)
+                Circle()
+                    .fill(
+                        (timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                            .opacity(colorScheme == .dark ? 0.10 : 0.07)
+                    )
+                    .frame(width: 300, height: 300)
+                    .blur(radius: 100)
+                    .scaleEffect(CGFloat(breath))
+                    .offset(x: 100, y: 100)
+                    .allowsHitTesting(false)
+            }
+        }
+        .cardSurface(
+            cornerRadius: Radius.board,
+            borderOpacity: 0.08,
+            shadowRadius: 16,
+            shadowY: 5
+        )
     }
 
-    private var taskPickerCard: some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            HStack(spacing: Space.s) {
-                Image(systemName: "checklist")
-                    .font(AppType.ui(Typo.body, .medium))
-                    .foregroundStyle(phaseColor)
-                    .frame(width: 30, height: 30)
-                    .background(phaseColor.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("当前任务")
-                        .font(AppType.ui(Typo.headline, .medium))
-                        .tracking(Tracking.heading)
-                    Text(store.canSwitchPomodoroTask ? "开始前可自由切换" : "本阶段已锁定")
-                        .font(AppType.caption())
-                        .foregroundStyle(.secondary)
-                }
+    /// 右侧合并信息面板：任务、本组进度、节奏摘要，用分隔线分区，不各占一张卡。
+    private var infoPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            compactTaskSection
+
+            Divider()
+                .padding(.vertical, Space.m)
+
+            if timerMode == .countdown {
+                compactSessionSection
+                Divider()
+                    .padding(.vertical, Space.m)
+                compactRhythmSection
+            } else {
+                stopwatchInfoSection
+            }
+        }
+        .padding(.vertical, Space.xl)
+        .padding(.horizontal, Space.l)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var compactTaskSection: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack {
+                Text("当前任务")
+                    .font(AppType.ui(Typo.footnote, .medium))
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Button {
                     presentedSheet = .tasks
                 } label: {
                     Image(systemName: "ellipsis")
-                        .frame(width: 24, height: 24)
+                        .font(AppType.caption(12, weight: .semibold))
+                        .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(TimeSlotPressableStyle())
@@ -407,7 +487,6 @@ struct PomodoroView: View {
             .pickerStyle(.menu)
             .font(AppType.ui(Typo.footnote, .medium))
             .disabled(!store.canSwitchPomodoroTask)
-            .frame(maxWidth: .infinity, alignment: .leading)
 
             if !store.canSwitchPomodoroTask {
                 Label(
@@ -418,36 +497,67 @@ struct PomodoroView: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .padding(Space.l)
-        .cardSurface()
     }
 
-    /// 正计时模式右侧的信息卡：本次开始时间、今日累计与最近记录。
-    /// 实时秒数由 timerCard 的大数字承担，这里只放不重复的静态信息。
-    private var stopwatchInfoCard: some View {
-        let todayRecords = todayStopwatchRecords
-        let todayTotal = todayRecords.reduce(0.0) { $0 + $1.actualDuration }
-
-        return VStack(alignment: .leading, spacing: Space.m) {
-            HStack(spacing: Space.s) {
-                Image(systemName: "stopwatch.fill")
-                    .font(AppType.ui(Typo.body, .medium))
-                    .foregroundStyle(stopwatchColor)
-                    .frame(width: 30, height: 30)
-                    .background(stopwatchColor.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("本次正计时")
-                        .font(AppType.ui(Typo.headline, .medium))
-                        .tracking(Tracking.heading)
-                    Text(stopwatchStatusTitle)
-                        .font(AppType.caption())
-                        .foregroundStyle(.secondary)
-                }
+    private var compactSessionSection: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            HStack {
+                Text("本组进度")
+                    .font(AppType.ui(Typo.footnote, .medium))
+                    .foregroundStyle(.secondary)
                 Spacer()
+                Text("累计完成 \(state.completedFocusSessions) 个番茄")
+                    .font(AppType.caption(11, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: Space.m) {
+            HStack(spacing: 6) {
+                ForEach(0..<state.roundsBeforeLongBreak, id: \.self) { index in
+                    let completedInCycle = state.completedFocusSessions % state.roundsBeforeLongBreak
+                    let isDone = index < completedInCycle
+                    Capsule()
+                        .fill(isDone ? Color.primary.opacity(0.72) : Surface.track)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 8)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("本组番茄进度")
+            .accessibilityValue("当前组已完成 \(state.completedFocusSessions % state.roundsBeforeLongBreak) / \(state.roundsBeforeLongBreak) 个番茄")
+        }
+    }
+
+    private var compactRhythmSection: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack {
+                Text("节奏")
+                    .font(AppType.ui(Typo.footnote, .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    presentedSheet = .settings
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(AppType.caption(12, weight: .semibold))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(TimeSlotPressableStyle())
+                .help("调整完整设置")
+            }
+
+            Text("\(state.focusMinutes) 分专注 · \(state.shortBreakMinutes) 分短休 · 每 \(state.roundsBeforeLongBreak) 轮 \(state.longBreakMinutes) 分长休")
+                .font(AppType.ui(Typo.footnote))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var stopwatchInfoSection: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            Text("本次正计时")
+                .font(AppType.ui(Typo.footnote, .medium))
+                .foregroundStyle(.secondary)
+            HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("开始于")
                         .font(AppType.caption())
@@ -461,62 +571,27 @@ struct PomodoroView: View {
                     Text("今日正计时")
                         .font(AppType.caption())
                         .foregroundStyle(.secondary)
-                    Text(todayRecords.isEmpty ? "尚无记录" : "\(todayRecords.count) 次 · \(formatHistoryDuration(todayTotal))")
+                    Text(todayRecordsSummary)
                         .font(AppType.ui(Typo.body, .medium))
-                        .foregroundStyle(todayRecords.isEmpty ? Color.secondary : stopwatchColor)
+                        .foregroundStyle(Color.primary)
                 }
             }
-            .padding(.vertical, Space.xs)
-            .padding(.horizontal, Space.m)
-            .background(Surface.nested, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-
-            if todayRecords.isEmpty {
-                HStack(spacing: Space.s) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(.secondary)
-                    Text("停止正计时后，实际用时会记入今天的记录。")
-                        .font(AppType.ui(Typo.footnote))
-                        .foregroundStyle(.secondary)
-                        .lineSpacing(2)
-                }
-                .padding(.top, Space.xs)
-            } else {
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("最近记录")
-                        .font(AppType.caption(weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .tracking(Tracking.label)
-                    ForEach(Array(todayRecords.prefix(2).enumerated()), id: \.element.id) { index, record in
-                        HStack(spacing: Space.s) {
-                            Text(record.startedAt, style: .time)
-                                .font(AppType.ui(Typo.footnote, .medium))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                                .frame(width: 40, alignment: .leading)
-                            Text(formatHistoryDuration(record.actualDuration))
-                                .font(AppType.ui(Typo.footnote, .semibold))
-                                .foregroundStyle(stopwatchColor)
-                            Text(record.taskTitle)
-                                .font(AppType.ui(Typo.footnote))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer(minLength: 0)
-                        }
-                        if index < 1 && todayRecords.count > 1 {
-                            Divider().padding(.leading, 40)
-                        }
-                    }
-                }
-                .padding(.vertical, Space.xs)
-                .padding(.horizontal, Space.m)
-                .background(Surface.nested, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-            }
+            Text(state.stopwatchRunning ? "正在计时" : "已暂停")
+                .font(AppType.caption())
+                .foregroundStyle(.secondary)
         }
-        .padding(Space.l)
-        .cardSurface(cornerRadius: Radius.medium, borderOpacity: 0.05, shadowRadius: 8, shadowY: 2)
     }
 
+    private var todayRecordsSummary: String {
+        let records = store.pomodoroHistory.filter { record in
+            record.status == .stopwatch && beijingCalendar.isDateInToday(record.startedAt)
+        }
+        let total = records.reduce(0.0) { $0 + $1.actualDuration }
+        if records.isEmpty { return "尚无记录" }
+        return "\(records.count) 次 · \(formatHistoryDuration(total))"
+    }
+    /// 正计时模式右侧的信息卡：本次开始时间、今日累计与最近记录。
+    /// 实时秒数由 timerCard 的大数字承担，这里只放不重复的静态信息。
     private var todayStopwatchRecords: [PomodoroSessionRecord] {
         store.pomodoroHistory.filter { record in
             record.status == .stopwatch && beijingCalendar.isDateInToday(record.startedAt)
@@ -550,74 +625,26 @@ struct PomodoroView: View {
                 quickPresetPills
             }
 
-            ZStack {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
+            TimelineView(.periodic(from: .now, by: 1)) { context in
                     let isStopwatch = timerMode == .stopwatch
-                    let accent = isStopwatch ? stopwatchColor : phaseColor
+                    let ink = isStopwatch ? stopwatchColor : phaseColor
                     let isLive = isStopwatch ? state.stopwatchRunning : state.isRunning
                     let prog = isStopwatch
                         ? stopwatchRingProgress(at: context.date)
                         : progress(at: context.date)
 
-                    ZStack {
-                        TimeSlotRing(progress: prog, color: accent, lineWidth: 12, showsGlow: isLive)
-
-                        VStack(spacing: Space.s) {
-                            HStack(spacing: Space.xs) {
-                                Image(systemName: timerMode == .stopwatch ? "stopwatch.fill" : state.phase.icon)
-                                Text(timerMode == .stopwatch ? "正计时" : state.phase.title)
-                            }
-                            .font(AppType.ui(Typo.footnote, .medium))
-                            .foregroundStyle(timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background((timerMode == .stopwatch ? stopwatchColor : phaseColor).opacity(0.12), in: Capsule())
-                            .overlay(Capsule().stroke((timerMode == .stopwatch ? stopwatchColor : phaseColor).opacity(0.2), lineWidth: 1))
-                            .symbolEffect(.pulse, isActive: isLive)
-
-                            if timerMode == .stopwatch {
-                                Text(stopwatchTimeText(state.stopwatchElapsed(at: context.date)))
-                                    .font(AppType.timer(Typo.timerLarge))
-                                    .tracking(Tracking.timer)
-                                    .monospacedDigit()
-                                    .foregroundStyle(stopwatchColor)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.62)
-                                    .frame(maxWidth: 232)
-                            } else {
-                                PomodoroTimerText(
-                                    state: state,
-                                    fontSize: Typo.timerLarge,
-                                    color: phaseColor
-                                )
-                            }
-
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(
-                                        (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning)
-                                        ? (timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                                        : Color.secondary.opacity(0.4)
-                                    )
-                                    .frame(width: 6, height: 6)
-                                    .shadow(
-                                        color: (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning)
-                                            ? (timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                                            : Color.clear,
-                                        radius: 4
-                                    )
-                                Text(timerStatusTitle)
-                                    .font(AppType.ui(Typo.footnote, .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                            .background(Color.primary.opacity(0.04), in: Capsule())
-                        }
-                    }
+                    TimeSlotGlowMeter(
+                        progress: prog,
+                        color: ink,
+                        phaseTitle: isStopwatch ? "正计时" : state.phase.title,
+                        phaseIcon: isStopwatch ? "stopwatch.fill" : state.phase.icon,
+                        timeText: isStopwatch
+                            ? stopwatchTimeText(state.stopwatchElapsed(at: context.date))
+                            : timerText(at: context.date),
+                        isRunning: isLive
+                    )
                 }
-            }
-            .frame(width: 232, height: 232)
+            .padding(.vertical, Space.m)
             .overlay {
                 ConfettiEffectView(isActive: state.phase == .focus && state.remaining(at: Date()) <= 0)
             }
@@ -628,7 +655,7 @@ struct PomodoroView: View {
                     : "\(state.phase.title)，剩余 \(timeText(state.remaining(at: Date())))"
             )
 
-            HStack(spacing: Space.s) {
+            HStack(spacing: 8) {
                 Button {
                     if isTimerActive {
                         showingResetConfirmation = true
@@ -637,10 +664,13 @@ struct PomodoroView: View {
                     }
                 } label: {
                     Label("重置", systemImage: "arrow.counterclockwise")
-                        .frame(minWidth: 52)
+                        .font(AppType.ui(13, .medium))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(.primary.opacity(0.72))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .buttonStyle(TimeSlotPressableStyle())
+                .inkPill()
                 .help(isTimerActive ? "重置会清除当前计时" : "重置计时")
                 .accessibilityIdentifier("timeslot.pomodoro.reset")
 
@@ -658,20 +688,13 @@ struct PomodoroView: View {
                         isLive ? "暂停" : "开始",
                         systemImage: isLive ? "pause.fill" : "play.fill"
                     )
-                    .font(AppType.ui(Typo.body, .semibold))
-                    .frame(minWidth: 78)
+                    .font(AppType.ui(13, .medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(.primary.opacity(0.82))
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                .shadow(
-                    color: (timerMode == .stopwatch ? stopwatchColor : phaseColor).opacity(
-                        (timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning) ? 0.45 : 0.2
-                    ),
-                    radius: 10,
-                    x: 0,
-                    y: 4
-                )
+                .buttonStyle(TimeSlotPressableStyle())
+                .inkPill()
                 .accessibilityIdentifier("timeslot.pomodoro.start-pause")
 
                 Button {
@@ -684,11 +707,13 @@ struct PomodoroView: View {
                     }
                 } label: {
                     Label("停止", systemImage: "stop.fill")
-                    .frame(minWidth: 64)
+                        .font(AppType.ui(13, .medium))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(.primary.opacity(0.72))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .tint(timerMode == .stopwatch ? stopwatchColor : phaseColor)
+                .buttonStyle(TimeSlotPressableStyle())
+                .inkPill()
                 .accessibilityIdentifier("timeslot.pomodoro.stop")
                 .disabled(
                     timerMode == .stopwatch
@@ -704,22 +729,19 @@ struct PomodoroView: View {
                         }
                     } label: {
                         Label("跳过", systemImage: "forward.end.fill")
-                            .frame(minWidth: 52)
+                            .font(AppType.ui(13, .medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .foregroundStyle(.primary.opacity(0.72))
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
+                    .buttonStyle(TimeSlotPressableStyle())
+                    .inkPill()
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 450)
+        .frame(maxWidth: .infinity, minHeight: 520)
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.xl)
-        .cardSurface(
-            cornerRadius: Radius.large,
-            borderOpacity: 0.08,
-            shadowRadius: 14,
-            shadowY: 4
-        )
     }
 
     private var quickPresetPills: some View {
@@ -741,118 +763,14 @@ struct PomodoroView: View {
                         .font(AppType.caption(11.5, weight: isCurrent ? .semibold : .regular))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(isCurrent ? phaseColor.opacity(0.18) : Surface.nested, in: Capsule())
-                        .overlay(Capsule().stroke(isCurrent ? phaseColor.opacity(0.4) : Color.clear, lineWidth: 1))
-                        .foregroundStyle(isCurrent ? phaseColor : Color.secondary)
+                        .background(isCurrent ? Color.primary.opacity(0.08) : Surface.nested, in: Capsule())
+                        .foregroundStyle(isCurrent ? Color.primary : Color.secondary)
                 }
                 .buttonStyle(TimeSlotPressableStyle())
                 .disabled(state.isRunning)
             }
         }
     }
-
-    private var sessionProgress: some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            HStack {
-                Text("本组进度")
-                    .font(AppType.ui(Typo.body, .medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("累计完成 \(state.completedFocusSessions) 个番茄")
-                    .font(AppType.ui(Typo.footnote, .medium))
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 6) {
-                ForEach(0..<state.roundsBeforeLongBreak, id: \.self) { index in
-                    let completedInCycle = state.completedFocusSessions % state.roundsBeforeLongBreak
-                    let isDone = index < completedInCycle
-                    Capsule()
-                        .fill(isDone ? phaseColor : Surface.track)
-                        .overlay {
-                            if isDone {
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.28), Color.clear],
-                                    startPoint: .top,
-                                    endPoint: .center
-                                )
-                                .clipShape(Capsule())
-                            }
-                        }
-                        .shadow(color: isDone ? phaseColor.opacity(0.35) : Color.clear, radius: 3, x: 0, y: 1)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 9)
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("本组番茄进度")
-            .accessibilityValue("当前组已完成 \(state.completedFocusSessions % state.roundsBeforeLongBreak) / \(state.roundsBeforeLongBreak) 个番茄")
-        }
-        .padding(Space.l)
-        .cardSurface(cornerRadius: Radius.medium, borderOpacity: 0.05, shadowRadius: 8, shadowY: 2)
-    }
-
-    private var rhythmCard: some View {
-        VStack(alignment: .leading, spacing: Space.m) {
-            HStack {
-                Text("当前节奏")
-                    .font(AppType.ui(Typo.body, .medium))
-                Spacer()
-                Button {
-                    presentedSheet = .settings
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(TimeSlotPressableStyle())
-                .help("调整完整设置")
-            }
-
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: Space.s),
-                    GridItem(.flexible(), spacing: Space.s)
-                ],
-                spacing: Space.s
-            ) {
-                PomodoroRhythmCell(
-                    label: "专注",
-                    icon: PomodoroPhase.focus.icon,
-                    color: phaseColor(for: .focus),
-                    current: state.focusMinutes,
-                    suffix: "分",
-                    presets: PomodoroPresets.focus
-                ) { applyRhythm(focus: $0) }
-                PomodoroRhythmCell(
-                    label: "短休息",
-                    icon: PomodoroPhase.shortBreak.icon,
-                    color: phaseColor(for: .shortBreak),
-                    current: state.shortBreakMinutes,
-                    suffix: "分",
-                    presets: PomodoroPresets.shortBreak
-                ) { applyRhythm(shortBreak: $0) }
-                PomodoroRhythmCell(
-                    label: "长休息",
-                    icon: PomodoroPhase.longBreak.icon,
-                    color: phaseColor(for: .longBreak),
-                    current: state.longBreakMinutes,
-                    suffix: "分",
-                    presets: PomodoroPresets.longBreak
-                ) { applyRhythm(longBreak: $0) }
-                PomodoroRhythmCell(
-                    label: "长休息间隔",
-                    icon: "repeat",
-                    color: .secondary,
-                    current: state.roundsBeforeLongBreak,
-                    suffix: "轮",
-                    presets: PomodoroPresets.rounds
-                ) { applyRhythm(rounds: $0) }
-            }
-        }
-        .padding(Space.l)
-        .cardSurface(cornerRadius: Radius.medium, borderOpacity: 0.07, shadowRadius: 8, shadowY: 2)
-    }
-
     private var historyCard: some View {
         let records = filteredHistoryRecords
         let visibleRecords = showingAllHistory ? records : Array(records.prefix(8))
@@ -864,7 +782,8 @@ struct PomodoroView: View {
             HStack {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text("阶段记录")
-                        .font(AppType.ui(Typo.body, .medium))
+                        .font(AppType.pageTitle(15))
+                        .tracking(0.2)
                     Text("按日期范围查看每个阶段的实际用时")
                         .font(AppType.ui(Typo.footnote))
                         .foregroundStyle(.secondary)
@@ -925,6 +844,14 @@ struct PomodoroView: View {
                             displayedDuration: displayedDuration(for: record),
                             taskColor: store.taskColor(for: record.taskTitle)
                         )
+                        .contextMenu {
+                            Button("修正记录…", systemImage: "slider.horizontal.3") {
+                                editingRecord = record
+                            }
+                            Button("删除这条记录", role: .destructive) {
+                                store.deletePomodoroHistory(ids: [record.id], title: record.taskTitle)
+                            }
+                        }
                         if index < visibleRecords.count - 1 {
                             Divider().padding(.leading, 42)
                         }
@@ -1031,8 +958,8 @@ struct PomodoroView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text("专注趋势")
-                        .font(AppType.ui(Typo.body, .medium))
-                        .tracking(Tracking.heading)
+                        .font(AppType.pageTitle(15))
+                        .tracking(0.2)
                     Text("每日累计专注时长 · 按任务分色")
                         .font(AppType.caption())
                         .foregroundStyle(.secondary)
@@ -1043,7 +970,7 @@ struct PomodoroView: View {
                     PomodoroChartMetric(label: "专注日均", value: formatHistoryDuration(average))
                     PomodoroChartMetric(
                         label: "最高",
-                        value: best.map { formatHistoryDuration($0) } ?? "—"
+                        value: best.map { formatHistoryDuration($0) } ?? "-"
                     )
                 }
             }
@@ -1073,7 +1000,18 @@ struct PomodoroView: View {
                 }
                 .chartForegroundStyleScale(
                     domain: order,
-                    range: order.map { store.taskColor(for: $0) }
+                    range: order.map { title in
+                        let hex = store.pomodoroTasks.first {
+                            PomodoroTaskPalette.normalized($0.title) == title
+                        }?.colorHex ?? PomodoroTaskPalette.fallbackColorHex(for: title)
+                        if colorScheme == .dark {
+                            let base = NSColor(hex: hex)
+                            return Color(
+                                nsColor: base.blended(withFraction: 0.32, of: NSColor.white) ?? base
+                            )
+                        }
+                        return Color(hex: hex)
+                    }
                 )
                 .chartLegend(position: .bottom, alignment: .leading, spacing: Space.m)
                 .chartXAxis {
@@ -1113,8 +1051,8 @@ struct PomodoroView: View {
         return VStack(alignment: .leading, spacing: Space.m) {
             HStack(alignment: .firstTextBaseline) {
                 Text("按任务分布")
-                    .font(AppType.ui(Typo.body, .medium))
-                    .tracking(Tracking.heading)
+                    .font(AppType.pageTitle(15))
+                    .tracking(0.2)
                 Spacer()
                 Text("仅统计专注时长")
                     .font(AppType.caption())
@@ -1216,7 +1154,7 @@ struct PomodoroView: View {
         let previousWeek = calendar.date(byAdding: .day, value: -7, to: currentWeek)
         let lastDay = calendar.date(byAdding: .day, value: 6, to: normalizedStart)
             ?? normalizedStart.addingTimeInterval(6 * 86_400)
-        let dateRange = "\(beijingDateString(normalizedStart, dateStyle: .abbreviated, timeStyle: .omitted)) – \(beijingDateString(lastDay, dateStyle: .abbreviated, timeStyle: .omitted))"
+        let dateRange = "\(beijingDateString(normalizedStart, dateStyle: .abbreviated, timeStyle: .omitted)) - \(beijingDateString(lastDay, dateStyle: .abbreviated, timeStyle: .omitted))"
 
         if normalizedStart == currentWeek {
             return "本周 · \(dateRange)"
@@ -1231,7 +1169,7 @@ struct PomodoroView: View {
         guard let bounds = historyBounds else { return "全部历史记录" }
         let calendar = beijingCalendar
         let lastDay = calendar.date(byAdding: .day, value: -1, to: bounds.end) ?? bounds.end
-        return "\(beijingDateString(bounds.start, dateStyle: .abbreviated, timeStyle: .omitted)) – \(beijingDateString(lastDay, dateStyle: .abbreviated, timeStyle: .omitted))"
+        return "\(beijingDateString(bounds.start, dateStyle: .abbreviated, timeStyle: .omitted)) - \(beijingDateString(lastDay, dateStyle: .abbreviated, timeStyle: .omitted))"
     }
 
     private func displayedDuration(for record: PomodoroSessionRecord) -> TimeInterval {
@@ -1279,6 +1217,11 @@ struct PomodoroView: View {
     private func progress(at date: Date) -> CGFloat {
         let total = max(1, state.duration(for: state.phase))
         return min(1, max(0, 1 - state.remaining(at: date) / total))
+    }
+
+    private func timerText(at date: Date) -> String {
+        let total = max(0, Int(ceil(state.remaining(at: date))))
+        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 
     /// 正计时没有终点，用「当前这一分钟」的进度当圆环，让走字有视觉反馈。
@@ -1368,6 +1311,7 @@ struct PomodoroRhythmCell: View {
     let icon: String
     let color: Color
     let current: Int
+    @Environment(\.colorScheme) private var colorScheme
     let suffix: String
     let presets: [Int]
     let onSelect: (Int) -> Void
@@ -1389,6 +1333,7 @@ struct PomodoroRhythmCell: View {
             HStack(spacing: Space.s) {
                 Image(systemName: icon)
                     .foregroundStyle(color)
+                    .brightness(colorScheme == .dark ? 0.22 : 0)
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text(label)
                         .font(AppType.caption())
@@ -1418,6 +1363,7 @@ struct PomodoroTotalCell: View {
     let label: String
     let value: String
     let color: Color
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
@@ -1425,9 +1371,9 @@ struct PomodoroTotalCell: View {
                 .font(AppType.caption())
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(AppType.timer(Typo.headline))
+                .font(AppType.ui(Typo.headline, .semibold))
                 .monospacedDigit()
-                .foregroundStyle(color)
+                .foregroundStyle(colorScheme == .dark ? Color.primary : color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Space.l)
@@ -1444,7 +1390,8 @@ struct PomodoroChartMetric: View {
                 .font(AppType.caption())
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(AppType.ui(Typo.footnote, .semibold))
+                .font(AppType.ui(Typo.body, .semibold))
+                .foregroundStyle(.primary)
         }
     }
 }
@@ -1453,6 +1400,7 @@ struct PomodoroHistoryRow: View {
     let record: PomodoroSessionRecord
     let displayedDuration: TimeInterval?
     let taskColor: Color
+    @Environment(\.colorScheme) private var colorScheme
 
     init(record: PomodoroSessionRecord, displayedDuration: TimeInterval? = nil, taskColor: Color) {
         self.record = record
@@ -1467,8 +1415,9 @@ struct PomodoroHistoryRow: View {
             Image(systemName: record.phase.icon)
                 .font(AppType.ui(Typo.body, .medium))
                 .foregroundStyle(color)
+                .brightness(colorScheme == .dark ? 0.22 : 0)
                 .frame(width: 28, height: 28)
-                .background(color.opacity(0.12))
+                .background(color.opacity(colorScheme == .dark ? 0.22 : 0.12))
                 .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: Space.xs) {
@@ -1566,6 +1515,7 @@ struct PomodoroTasksView: View {
                     }
                 }
             }
+            .scrollIndicators(.hidden)
             .frame(maxHeight: 300)
             .cardSurface()
 
@@ -1642,6 +1592,8 @@ struct PomodoroTasksView: View {
 
 struct PomodoroSettingsView: View {
     let accent: Color
+    let breakAccent: Color
+    let longBreakAccent: Color
     let onSave: (Int, Int, Int, Int, Int) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var focusMinutes: Int
@@ -1650,8 +1602,10 @@ struct PomodoroSettingsView: View {
     @State private var roundsBeforeLongBreak: Int
     @State private var weeklyGoalHours: Int
 
-    init(state: PomodoroState, accent: Color, onSave: @escaping (Int, Int, Int, Int, Int) -> Void) {
+    init(state: PomodoroState, accent: Color, breakAccent: Color, longBreakAccent: Color, onSave: @escaping (Int, Int, Int, Int, Int) -> Void) {
         self.accent = accent
+        self.breakAccent = breakAccent
+        self.longBreakAccent = longBreakAccent
         self.onSave = onSave
         _focusMinutes = State(initialValue: state.focusMinutes)
         _shortBreakMinutes = State(initialValue: state.shortBreakMinutes)
@@ -1687,13 +1641,13 @@ struct PomodoroSettingsView: View {
                 settingRow(
                     title: "短休息", value: $shortBreakMinutes, range: 1...30, suffix: "分钟",
                     presets: PomodoroPresets.shortBreak,
-                    accent: Color(hex: "#2C8C7C")
+                    accent: breakAccent
                 )
                 Divider()
                 settingRow(
                     title: "长休息", value: $longBreakMinutes, range: 1...60, suffix: "分钟",
                     presets: PomodoroPresets.longBreak,
-                    accent: Color(hex: "#5A78B8")
+                    accent: longBreakAccent
                 )
                 Divider()
                 settingRow(
@@ -1794,5 +1748,154 @@ struct PomodoroPresetChip: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(TimeSlotPressableStyle())
+    }
+}
+
+/// 修正历史记录弹窗：调整起止时间与任务名，时长按新墙钟重算。
+struct PomodoroHistoryEditSheet: View {
+    let record: PomodoroSessionRecord
+    let tasks: [PomodoroTask]
+    let phaseTitle: String
+    let onSave: (Date, Date, String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var startedAt: Date
+    @State private var endedAt: Date
+    @State private var taskTitle: String
+
+    init(
+        record: PomodoroSessionRecord,
+        tasks: [PomodoroTask],
+        phaseTitle: String,
+        onSave: @escaping (Date, Date, String) -> Void
+    ) {
+        self.record = record
+        self.tasks = tasks
+        self.phaseTitle = phaseTitle
+        self.onSave = onSave
+        _startedAt = State(initialValue: record.startedAt)
+        _endedAt = State(initialValue: record.endedAt)
+        _taskTitle = State(initialValue: PomodoroTaskPalette.normalized(record.taskTitle))
+    }
+
+    private var durationText: String {
+        let wall = max(0, endedAt.timeIntervalSince(startedAt))
+        let total = Int(wall.rounded())
+        if total < 60 { return "\(total) 秒" }
+        let minutes = total / 60
+        let hours = minutes / 60
+        if hours > 0 {
+            return minutes % 60 == 0 ? "\(hours) 小时" : "\(hours) 小时 \(minutes % 60) 分"
+        }
+        return "\(minutes) 分钟"
+    }
+
+    private var canSave: Bool {
+        endedAt.timeIntervalSince(startedAt) > 0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xl) {
+            HStack(spacing: Space.m) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("修正记录")
+                        .font(AppType.title(Typo.sheetTitle))
+                        .tracking(Tracking.heading)
+                    Text("\(phaseTitle) · 调整起止时间与任务名，修正漏关计时产生的误差")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut(.cancelAction)
+            }
+
+            VStack(alignment: .leading, spacing: Space.m) {
+                HStack {
+                    Text("任务")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                    Spacer()
+                    Picker("任务", selection: $taskTitle) {
+                        ForEach(tasks, id: \.title) { task in
+                            Text(task.title).tag(PomodoroTaskPalette.normalized(task.title))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 200)
+                }
+
+                Divider()
+
+                HStack {
+                    Text("开始时间")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                    Spacer()
+                    DatePicker(
+                        "开始时间",
+                        selection: $startedAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.field)
+                }
+
+                Divider()
+
+                HStack {
+                    Text("结束时间")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                    Spacer()
+                    DatePicker(
+                        "结束时间",
+                        selection: $endedAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.field)
+                }
+
+                Divider()
+
+                HStack {
+                    Text("修正后时长")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                    Spacer()
+                    Text(durationText)
+                        .font(AppType.ui(Typo.body, .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(canSave ? Color.primary : Color.orange)
+                }
+
+                if !canSave {
+                    Label("结束时间需要晚于开始时间", systemImage: "exclamationmark.triangle.fill")
+                        .font(AppType.caption(weight: .medium))
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(Space.l)
+            .cardSurface()
+
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("保存修正") {
+                    onSave(startedAt, endedAt, taskTitle)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave)
+            }
+        }
+        .padding(Space.xl)
+        .frame(width: 480)
     }
 }

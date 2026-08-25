@@ -5,6 +5,7 @@ import SwiftUI
 /// 系统「设置…」（⌘,）与应用内设置共用这一页，避免两套设置逻辑漂移。
 struct AppSettingsPage: View {
     @ObservedObject var store: CountdownStore
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showingPomodoroSettings = false
     @State private var showingClearHistoryConfirmation = false
     @State private var pendingImport: BackupPayload?
@@ -33,10 +34,10 @@ struct AppSettingsPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
-                VStack(alignment: .leading, spacing: Space.xs) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("设置")
-                        .font(AppType.pageTitle())
-                        .tracking(Tracking.pageTitle)
+                        .font(AppType.pageTitle(28))
+                        .tracking(-0.4)
                     Text("提醒、小组件与专注节奏")
                         .font(AppType.ui(Typo.footnote))
                         .foregroundStyle(.secondary)
@@ -71,7 +72,7 @@ struct AppSettingsPage: View {
                                     .font(AppType.ui(Typo.body, .medium))
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(accent)
+                            .foregroundStyle(.primary.opacity(0.72))
                             .help("试听当前提示音")
                         }
                         .padding(.vertical, 4)
@@ -107,51 +108,7 @@ struct AppSettingsPage: View {
                         .lineSpacing(2)
                 }
 
-                settingsCard(title: "颜色主题", icon: "paintpalette") {
-                    HStack(spacing: Space.l) {
-                        ForEach(ColorPreset.allCases) { preset in
-                            Button {
-                                store.accentPreset = preset
-                            } label: {
-                                VStack(spacing: Space.s) {
-                                    Circle()
-                                        .fill(preset.color)
-                                        .frame(width: 32, height: 32)
-                                        .overlay(
-                                            Circle().stroke(Color.primary.opacity(0.16), lineWidth: 1)
-                                        )
-                                        .overlay {
-                                            if store.accentPreset == preset {
-                                                Image(systemName: "checkmark")
-                                                    .font(.system(size: 13, weight: .bold))
-                                                    .foregroundStyle(.white)
-                                                    .shadow(color: .black.opacity(0.4), radius: 1)
-                                            }
-                                        }
-                                        .shadow(color: preset.color.opacity(store.accentPreset == preset ? 0.35 : 0), radius: 6)
-                                    Text(preset.title)
-                                        .font(AppType.caption(12, weight: store.accentPreset == preset ? .semibold : .regular))
-                                        .foregroundStyle(store.accentPreset == preset ? Color.primary : Color.secondary)
-                                }
-                            }
-                            .buttonStyle(TimeSlotPressableStyle())
-                            .contentShape(Rectangle())
-                            .help(preset.title)
-                            .accessibilityLabel(preset.title)
-                            .accessibilityValue(store.accentPreset == preset ? "已选中" : "未选中")
-                        }
-                        Spacer(minLength: 0)
-                    }
-
-                    Divider()
-
-                    Text("预设同时适配浅色与深色模式，改动立即生效。")
-                        .font(AppType.caption())
-                        .foregroundStyle(.secondary)
-                        .lineSpacing(2)
-                }
-
-                settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
+settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
                     pickerRow(
                         label: "内容",
                         systemImage: "rectangle.split.2x1",
@@ -184,7 +141,7 @@ struct AppSettingsPage: View {
 
                     HStack(spacing: Space.m) {
                         Image(systemName: widgetSyncInfo.icon)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(AppType.caption(12, weight: .semibold))
                             .foregroundStyle(widgetSyncInfo.color)
                             .frame(width: 24, height: 24)
                             .background(
@@ -220,7 +177,7 @@ struct AppSettingsPage: View {
                             showingPomodoroSettings = true
                         }
                         .buttonStyle(.bordered)
-                        .tint(accent)
+                        .tint(Color.primary)
                         .accessibilityIdentifier("timeslot.settings.pomodoro.edit")
                     }
                 }
@@ -228,7 +185,7 @@ struct AppSettingsPage: View {
                 settingsCard(title: "数据", icon: "externaldrive") {
                     HStack(spacing: Space.m) {
                         Image(systemName: storageMigrationIcon)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(AppType.caption(12, weight: .semibold))
                             .foregroundStyle(storageMigrationColor)
                             .frame(width: 24, height: 24)
                             .background(
@@ -296,8 +253,8 @@ struct AppSettingsPage: View {
             .padding(.bottom, Space.xxl)
             .frame(maxWidth: 760, alignment: .leading)
         }
+        .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Surface.canvas)
         .onAppear {
             store.refreshNotificationPermissionStatus()
         }
@@ -305,7 +262,12 @@ struct AppSettingsPage: View {
             store.refreshNotificationPermissionStatus()
         }
         .sheet(isPresented: $showingPomodoroSettings) {
-            PomodoroSettingsView(state: store.pomodoro, accent: store.accentPreset.color) { focus, shortBreak, longBreak, rounds, weeklyGoalHours in
+            PomodoroSettingsView(
+                state: store.pomodoro,
+                accent: store.accentPreset.color,
+                breakAccent: Color(hex: store.accentPreset.breakHex),
+                longBreakAccent: Color(hex: store.accentPreset.longBreakHex)
+            ) { focus, shortBreak, longBreak, rounds, weeklyGoalHours in
                 store.updatePomodoroSettings(
                     focusMinutes: focus,
                     shortBreakMinutes: shortBreak,
@@ -364,10 +326,10 @@ struct AppSettingsPage: View {
             // 系统设置风格：圆角图标块 + 小节标题
             HStack(spacing: Space.s) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(accent)
+                    .font(AppType.ui(13, .medium))
+                    .foregroundStyle(.primary.opacity(0.72))
                     .frame(width: 26, height: 26)
-                    .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 Text(title)
                     .font(AppType.ui(Typo.body, .medium))
                     .tracking(Tracking.heading)
@@ -377,10 +339,10 @@ struct AppSettingsPage: View {
         .padding(Space.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface(
-            cornerRadius: Radius.medium,
+            cornerRadius: Radius.board,
             borderOpacity: 0.07,
-            shadowRadius: 8,
-            shadowY: 2
+            shadowRadius: 12,
+            shadowY: 4
         )
     }
 
@@ -403,10 +365,10 @@ struct AppSettingsPage: View {
     ) -> some View {
         HStack(spacing: Space.s) {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(accent)
+                .font(AppType.caption(12, weight: .medium))
+                .foregroundStyle(.primary.opacity(0.72))
                 .frame(width: 24, height: 24)
-                .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             Text(label)
                 .font(AppType.ui(Typo.footnote, .medium))
             Spacer()
@@ -462,7 +424,7 @@ struct AppSettingsPage: View {
                     store.requestNotificationPermission()
                 }
                 .buttonStyle(.bordered)
-                .tint(accent)
+                .tint(Color.primary)
                 .controlSize(.small)
                 .accessibilityIdentifier("timeslot.settings.notifications.allow")
             case .denied:
@@ -470,7 +432,7 @@ struct AppSettingsPage: View {
                     store.openNotificationSettings()
                 }
                 .buttonStyle(.bordered)
-                .tint(accent)
+                .tint(Color.primary)
                 .controlSize(.small)
                 .accessibilityIdentifier("timeslot.settings.notifications.open-system")
             case .checking:
@@ -486,7 +448,7 @@ struct AppSettingsPage: View {
 
     private func notificationPermissionTint(for state: NotificationPermissionState) -> Color {
         switch state {
-        case .authorized, .provisional: return accent
+        case .authorized, .provisional: return Color.primary
         case .denied: return .orange
         case .checking, .notDetermined: return .secondary
         }
@@ -540,7 +502,7 @@ struct AppSettingsPage: View {
             return ("正在检查共享空间", "稍后会自动完成第一次同步", "arrow.triangle.2.circlepath", .secondary)
         case .ready(let date):
             let time = beijingDateString(date, dateStyle: .omitted, timeStyle: .shortened)
-            return ("小组件同步正常", "最近同步于 \(time)", "checkmark.circle.fill", accent)
+            return ("小组件同步正常", "最近同步于 \(time)", "checkmark.circle.fill", Color.primary)
         case .unavailable:
             return ("共享空间不可用", "请重新安装当前版本以恢复小组件权限", "exclamationmark.triangle.fill", .orange)
         case .failed(let message):
@@ -558,7 +520,7 @@ struct AppSettingsPage: View {
 
     private var storageMigrationColor: Color {
         switch store.storageMigrationState {
-        case .current: return accent
+        case .current: return Color.primary
         case .migrated: return .blue
         case .pending: return .orange
         }
@@ -587,7 +549,7 @@ struct AppSettingsPage: View {
     }
 
     private var appVersionText: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         return "版本 \(version) (\(build))"
     }

@@ -25,6 +25,9 @@ struct CountdownWidgetApp: App {
         Settings {
             AppSettingsPage(store: store)
                 .frame(minWidth: 640, minHeight: 600)
+                .background {
+                    FrostedCanvas(theme: store.accentPreset)
+                }
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
@@ -48,6 +51,11 @@ struct CountdownWidgetApp: App {
                 .keyboardShortcut("n", modifiers: [.command])
             }
             CommandMenu("视图") {
+                Button("首页") {
+                    NotificationCenter.default.post(name: .switchToHomeRequested, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: [.command])
+
                 Button("倒计时") {
                     NotificationCenter.default.post(name: .switchToCountdownRequested, object: nil)
                 }
@@ -57,13 +65,6 @@ struct CountdownWidgetApp: App {
                     NotificationCenter.default.post(name: .switchToPomodoroRequested, object: nil)
                 }
                 .keyboardShortcut("2", modifiers: [.command])
-
-                Divider()
-
-                Button("切换禅模式悬浮窗") {
-                    ZenHUDWindowController.shared.toggle(store: store)
-                }
-                .keyboardShortcut("m", modifiers: [.command])
 
                 Divider()
 
@@ -88,13 +89,13 @@ struct CountdownWidgetApp: App {
 
 extension Notification.Name {
     static let newCountdownRequested = Notification.Name("newCountdownRequested")
+    static let switchToHomeRequested = Notification.Name("switchToHomeRequested")
     static let switchToCountdownRequested = Notification.Name("switchToCountdownRequested")
     static let switchToPomodoroRequested = Notification.Name("switchToPomodoroRequested")
     static let openPomodoroSettingsRequested = Notification.Name("openPomodoroSettingsRequested")
     static let showWidgetHelpRequested = Notification.Name("showWidgetHelpRequested")
     static let focusCountdownSearchRequested = Notification.Name("focusCountdownSearchRequested")
     static let showKeyboardShortcutsRequested = Notification.Name("showKeyboardShortcutsRequested")
-    static let toggleZenHUDRequested = Notification.Name("toggleZenHUDRequested")
 }
 
 @MainActor
@@ -135,280 +136,6 @@ enum BackupFileService {
 }
 
 @MainActor
-final class ZenHUDWindowController {
-    static let shared = ZenHUDWindowController()
-    private var panel: NSPanel?
-
-    func toggle(store: CountdownStore) {
-        if let panel = panel, panel.isVisible {
-            panel.close()
-            self.panel = nil
-            return
-        }
-        show(store: store)
-    }
-
-    func show(store: CountdownStore) {
-        if panel == nil {
-            let p = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 280, height: 168),
-                styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
-                backing: .buffered,
-                defer: false
-            )
-            p.isFloatingPanel = true
-            p.level = .floating
-            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            p.titleVisibility = .hidden
-            p.titlebarAppearsTransparent = true
-            p.isMovableByWindowBackground = true
-            p.backgroundColor = .clear
-            p.isOpaque = false
-            p.hasShadow = true
-
-            let hosting = NSHostingView(
-                rootView: ZenHUDView(store: store) { [weak self] in
-                    self?.panel?.close()
-                    self?.panel = nil
-                }
-                .environment(\.calendar, beijingCalendar)
-                .environment(\.timeZone, beijingTimeZone)
-                .environment(\.locale, beijingLocale)
-            )
-            p.contentView = hosting
-            p.center()
-            self.panel = p
-        }
-        panel?.makeKeyAndOrderFront(nil)
-    }
-
-    func close() {
-        panel?.close()
-        panel = nil
-    }
-}
-
-struct ZenHUDView: View {
-    @ObservedObject var store: CountdownStore
-    let onClose: () -> Void
-    @State private var isHovering = false
-
-    private var accent: Color { store.accentPreset.color }
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
-                }
-                .shadow(color: Color.black.opacity(0.18), radius: 20, y: 8)
-
-            VStack(spacing: 8) {
-                // 顶部控制条
-                HStack(spacing: 6) {
-                    BrandMark(size: 18)
-                    Text("禅模式")
-                        .font(AppType.caption(11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if isHovering {
-                        Button {
-                            NSApp.activate(ignoringOtherApps: true)
-                            if let window = NSApp.windows.first(where: { $0.title == "时隙" }) {
-                                window.makeKeyAndOrderFront(nil)
-                            }
-                        } label: {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20, height: 20)
-                        }
-                        .buttonStyle(.plain)
-                        .help("展开主窗口")
-
-                        Button {
-                            onClose()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20, height: 20)
-                        }
-                        .buttonStyle(.plain)
-                        .help("关闭悬浮窗")
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-
-                // 中间展示区：倒计时 或 番茄钟
-                if store.pomodoro.isRunning || store.pomodoro.isStopwatchActive {
-                    pomodoroContent
-                } else if let selected = store.selectedItem {
-                    countdownContent(selected)
-                } else {
-                    pomodoroContent
-                }
-            }
-            .padding(.bottom, 12)
-        }
-        .frame(width: 280, height: 168)
-        .onHover { isHovering = $0 }
-    }
-
-    @ViewBuilder
-    private var pomodoroContent: some View {
-        let state = store.pomodoro
-        let phaseColor = state.phase == .focus ? accent : Color(hex: state.phase.colorHex)
-        let isStopwatch = state.isStopwatchActive
-        let color = isStopwatch ? accent : phaseColor
-        let isRunning = isStopwatch ? state.stopwatchRunning : state.isRunning
-
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let prog = isStopwatch
-                ? CGFloat(max(0, state.stopwatchElapsed(at: context.date)).truncatingRemainder(dividingBy: 60) / 60)
-                : CGFloat(min(1, max(0, 1 - state.remaining(at: context.date) / max(1, state.duration(for: state.phase)))))
-
-            HStack(spacing: 16) {
-                ZStack {
-                    TimeSlotRing(progress: prog, color: color, lineWidth: 6, showsGlow: isRunning)
-                        .frame(width: 72, height: 72)
-
-                    Image(systemName: isStopwatch ? "stopwatch.fill" : state.phase.icon)
-                        .font(.system(size: 20))
-                        .foregroundStyle(color)
-                        .symbolEffect(.pulse, isActive: isRunning)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(isStopwatch ? "正计时" : state.phase.title)
-                        .font(AppType.caption(12, weight: .semibold))
-                        .foregroundStyle(color)
-
-                    if isStopwatch {
-                        Text(stopwatchFormat(state.stopwatchElapsed(at: context.date)))
-                            .font(AppType.timer(22))
-                            .monospacedDigit()
-                            .foregroundStyle(color)
-                    } else {
-                        PomodoroTimerText(state: state, fontSize: 22, color: color)
-                    }
-
-                    HStack(spacing: 6) {
-                        Button {
-                            if isStopwatch {
-                                store.startOrPauseStopwatch()
-                            } else {
-                                store.startOrPausePomodoro()
-                            }
-                        } label: {
-                            Image(systemName: isRunning ? "pause.fill" : "play.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(color)
-                        .controlSize(.mini)
-
-                        Button {
-                            if isStopwatch {
-                                store.resetStopwatch()
-                            } else {
-                                store.resetPomodoro()
-                            }
-                        } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                    }
-                    .padding(.top, 2)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func countdownContent(_ item: CountdownItem) -> some View {
-        let color = Color(hex: item.colorHex)
-        return TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = item.remaining(at: context.date)
-            let isDone = remaining <= 0
-            let total = max(1, item.totalDuration)
-            let prog = CGFloat(isDone ? 1 : min(1, max(0.02, 1 - remaining / total)))
-
-            HStack(spacing: 16) {
-                ZStack {
-                    TimeSlotRing(progress: prog, color: color, lineWidth: 6, showsGlow: !item.isPaused && !isDone)
-                        .frame(width: 72, height: 72)
-
-                    Image(systemName: isDone ? "checkmark" : (item.isPaused ? "pause.fill" : "timer"))
-                        .font(.system(size: 20))
-                        .foregroundStyle(color)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title)
-                        .font(AppType.ui(13, .semibold))
-                        .lineLimit(1)
-
-                    Text(remainingDisplayCompact(remaining))
-                        .font(AppType.timer(20))
-                        .monospacedDigit()
-                        .foregroundStyle(color)
-
-                    HStack(spacing: 6) {
-                        Button {
-                            store.togglePause(item)
-                        } label: {
-                            Image(systemName: item.isPaused ? "play.fill" : "pause.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(color)
-                        .controlSize(.mini)
-
-                        Text(item.isPaused ? "已暂停" : (isDone ? "已到达" : "进行中"))
-                            .font(AppType.caption(10.5))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 2)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func remainingDisplayCompact(_ remaining: TimeInterval) -> String {
-        guard remaining > 0 else { return "已到达" }
-        let total = Int(ceil(remaining))
-        let d = total / 86400
-        let h = (total % 86400) / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if d > 0 { return "\(d)天 \(h)小时" }
-        if h > 0 { return String(format: "%02d:%02d:%02d", h, m, s) }
-        return String(format: "%02d:%02d", m, s)
-    }
-
-    private func stopwatchFormat(_ elapsed: TimeInterval) -> String {
-        let total = max(0, Int(elapsed))
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
-        return String(format: "%02d:%02d", m, s)
-    }
-}
-
-@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -419,6 +146,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 window.makeKeyAndOrderFront(nil)
             }
             malloc_zone_pressure_relief(nil, 0)
+        }
+        // 强制所有滚动容器使用 overlay 细滚动条（滚动时才出现、悬停才加粗），
+        // 覆盖「始终显示滚动条」的系统设置，贴合看板式界面。
+        forceOverlayScrollers()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            self?.forceOverlayScrollers()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+            self?.forceOverlayScrollers()
+        }
+    }
+
+    private func forceOverlayScrollers() {
+        func walk(_ view: NSView) {
+            if let scrollView = view as? NSScrollView {
+                scrollView.scrollerStyle = .overlay
+                scrollView.autohidesScrollers = true
+                scrollView.scrollerKnobStyle = colorSchemeScrollerKnob()
+            }
+            view.subviews.forEach(walk)
+        }
+        for window in NSApp.windows {
+            if let contentView = window.contentView {
+                walk(contentView)
+            }
+        }
+    }
+
+    private func colorSchemeScrollerKnob() -> NSScroller.KnobStyle {
+        switch NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) {
+        case .darkAqua: return .dark
+        default: return .light
         }
     }
 

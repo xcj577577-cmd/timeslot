@@ -214,11 +214,14 @@ enum NotificationPermissionState: Equatable {
 enum UndoableStoreAction: Equatable {
     case countdownDeleted(title: String)
     case pomodoroHistoryCleared(count: Int)
+    case pomodoroRecordsDeleted(count: Int, title: String)
 
     var message: String {
         switch self {
         case .countdownDeleted(let title): return "已删除「\(title)」"
         case .pomodoroHistoryCleared(let count): return "已清空 \(count) 条阶段记录"
+        case .pomodoroRecordsDeleted(let count, let title):
+            return count == 1 ? "已删除「\(title)」的一条记录" : "已删除「\(title)」的 \(count) 条记录"
         }
     }
 }
@@ -263,7 +266,7 @@ enum PomodoroPhase: String, Codable, CaseIterable {
         switch self {
         case .focus: return "#D86F52"
         case .shortBreak: return "#2C8C7C"
-        case .longBreak: return "#5A78B8"
+        case .longBreak: return "#4C9A5A"
         }
     }
 }
@@ -385,9 +388,10 @@ enum PomodoroHistoryRangePolicy {
 }
 
 /// 任务配色。统计里每个任务用固定的一种颜色，图表、图例、按任务分布和历史行都取这里。
+/// 去掉靛蓝系，保持暖冷平衡且不与主题蓝冲突。
 enum PomodoroTaskPalette {
     static let colorHexes = [
-        "#2C8C7C", "#D86F52", "#5A78B8", "#B07A3A",
+        "#2C8C7C", "#D86F52", "#E2B84A", "#B07A3A",
         "#7B5EA7", "#4C9A5A", "#C2557A", "#3E8FA8"
     ]
 
@@ -644,6 +648,7 @@ struct PomodoroState: Codable, Equatable {
 }
 
 enum TimeBookSection: String, CaseIterable {
+    case home
     case countdown
     case pomodoro
     case settings

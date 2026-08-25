@@ -9,71 +9,26 @@ struct BrandMark: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [BrandPalette.ink, BrandPalette.deepTeal, Color(hex: "#145754")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            // 两条错位时间带，中央金色楔形就是“时隙”。
+            RoundedRectangle(cornerRadius: size * 0.08, style: .continuous)
+                .fill(Color.primary)
+                .frame(width: size * 0.42, height: size * 0.14)
+                .offset(x: -size * 0.10, y: -size * 0.08)
 
-            RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
+            RoundedRectangle(cornerRadius: size * 0.08, style: .continuous)
+                .fill(Color.primary)
+                .frame(width: size * 0.42, height: size * 0.14)
+                .offset(x: size * 0.10, y: size * 0.08)
+
+            TimeSlotWedge()
                 .fill(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.13), Color.clear],
+                        colors: [BrandPalette.goldHighlight, BrandPalette.gold],
                         startPoint: .top,
-                        endPoint: .center
+                        endPoint: .bottom
                     )
                 )
-
-            // 两条时间带围绕中心错位，中央金色缺口就是“时隙”。
-            RoundedRectangle(cornerRadius: size * 0.052, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [BrandPalette.mint, BrandPalette.teal],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size * 0.32, height: size * 0.12)
-                .offset(x: -size * 0.175, y: -size * 0.055)
-
-            RoundedRectangle(cornerRadius: size * 0.052, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [BrandPalette.mint, BrandPalette.teal],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size * 0.32, height: size * 0.12)
-                .offset(x: size * 0.175, y: size * 0.055)
-
-            Path { path in
-                path.move(to: CGPoint(x: size * 0.455, y: size * 0.39))
-                path.addLine(to: CGPoint(x: size * 0.545, y: size * 0.48))
-                path.addLine(to: CGPoint(x: size * 0.545, y: size * 0.61))
-                path.addLine(to: CGPoint(x: size * 0.455, y: size * 0.52))
-                path.closeSubpath()
-            }
-            .fill(
-                LinearGradient(
-                    colors: [Color(hex: "#F3D69B"), BrandPalette.gold],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-
-            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.16), Color.white.opacity(0.025)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: max(0.5, size * 0.018)
-                )
+                .frame(width: size * 0.16, height: size * 0.28)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
@@ -107,10 +62,11 @@ struct ContentView: View {
     @State private var searchText = ""
     @State private var countdownFilter: CountdownFilter = .all
     @State private var countdownViewMode: CountdownViewMode = .card
-    @State private var selectedSection: TimeBookSection = .countdown
-    @State private var showingCopiedFeedback = false
+    @State private var selectedSection: TimeBookSection = .home
+    @State private var hoveredRail: TimeBookSection?
     @FocusState private var searchFieldFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     private var accent: Color { store.accentPreset.color }
     private var stopwatchColor: Color { store.accentPreset.color }
@@ -136,31 +92,41 @@ struct ContentView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-            Divider()
-            detail
+        HStack(alignment: .top, spacing: 0) {
+            navigationRail
+
+            VStack(alignment: .leading, spacing: 16) {
+                workstationHeader
+
+                Group {
+                    if selectedSection == .home {
+                        GeometryReader { geo in
+                            ScrollView {
+                                homeDashboard
+                                    .frame(maxWidth: .infinity, minHeight: max(0, geo.size.height), alignment: .top)
+                            }
+                            .scrollIndicators(.hidden)
+                        }
+                    } else {
+                        HStack(alignment: .top, spacing: 14) {
+                            sidebar
+                            detail
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+            .padding(.top, 10)
+            .padding(.trailing, 18)
+            .padding(.bottom, 18)
+            .padding(.leading, 2)
         }
-        // 系统字形负责界面阅读，计时数字在 AppType.timer 中单独使用圆体。
         .fontDesign(.default)
-        .background(Surface.canvas)
+        .background {
+            FrostedCanvas(theme: store.accentPreset)
+        }
         .overlay(alignment: .bottomTrailing) {
             VStack(alignment: .trailing, spacing: Space.s) {
-                if showingCopiedFeedback {
-                    HStack(spacing: Space.s) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(accent)
-                        Text("已复制倒计时文案到剪贴板")
-                            .font(AppType.ui(Typo.footnote, .medium))
-                    }
-                    .padding(.horizontal, Space.m)
-                    .padding(.vertical, 8)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay(Capsule().stroke(accent.opacity(0.25), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
-
                 if let action = store.undoableAction {
                     UndoBanner(action: action, accent: accent) {
                         store.undoLastAction()
@@ -172,7 +138,6 @@ struct ContentView: View {
             .padding(.bottom, Space.xl)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: store.undoableAction)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: showingCopiedFeedback)
         .sheet(isPresented: $showingAdd) {
             CountdownEditor(mode: .add) { title, date, color in
                 store.add(title: title, targetDate: date, colorHex: color)
@@ -193,6 +158,11 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .newCountdownRequested)) { _ in
             showingAdd = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .switchToHomeRequested)) { _ in
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                selectedSection = .home
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .switchToCountdownRequested)) { _ in
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
@@ -234,20 +204,215 @@ struct ContentView: View {
         }
     }
 
+    private var workstationHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(spacing: 12) {
+                BrandMark(size: 32)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text("Time")
+                            .font(.system(size: 26, weight: .ultraLight, design: .serif))
+                        Text("Slot")
+                            .font(.system(size: 26, weight: .regular, design: .serif))
+                    }
+                    .tracking(-0.8)
+                    Text(workspaceTitle)
+                        .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                        .tracking(0.9)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, 2)
+
+            Spacer(minLength: 16)
+
+            Button {
+                showingWidgetHelp = true
+            } label: {
+                Label("桌面小组件", systemImage: "macwindow.on.rectangle")
+                    .font(AppType.ui(Typo.footnote, .medium))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(TimeSlotPressableStyle())
+            .background(pillChrome)
+            .help("1:1 预览桌面小组件")
+
+            Button {
+                showingShortcuts = true
+            } label: {
+                Image(systemName: "keyboard")
+                    .font(AppType.ui(13, .medium))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(TimeSlotPressableStyle())
+            .background(circleChrome)
+            .help("快捷键速查 (⌘/)")
+            .accessibilityLabel("快捷键")
+
+            Button {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                    selectedSection = .settings
+                }
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(AppType.ui(13, .medium))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(TimeSlotPressableStyle())
+            .background {
+                if selectedSection == .settings {
+                    circleChromeSelected
+                } else {
+                    circleChrome
+                }
+            }
+            .foregroundStyle(Color.primary.opacity(0.72))
+            .help("设置")
+            .accessibilityLabel("设置")
+            .accessibilityIdentifier("timeslot.settings.open")
+            .accessibilityValue(selectedSection == .settings ? "已选中" : "未选中")
+        }
+        .padding(.leading, 8)
+    }
+
+    private var pillChrome: some View {
+        Capsule()
+            .fill(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42))
+            .overlay(Capsule().stroke(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.55), lineWidth: 1))
+    }
+
+    private var circleChrome: some View {
+        Circle()
+            .fill(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42))
+            .overlay(Circle().stroke(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.55), lineWidth: 1))
+    }
+
+    private var circleChromeSelected: some View {
+        Circle()
+            .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.08))
+            .overlay(Circle().stroke(Color.primary.opacity(0.10), lineWidth: 1))
+    }
+
+    private var workspaceTitle: String {
+        switch selectedSection {
+        case .home: return "WORKSPACE"
+        case .countdown: return "COUNTDOWN"
+        case .pomodoro: return "FOCUS"
+        case .settings: return "SETTINGS"
+        }
+    }
+
+    private func headerGhostButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(AppType.ui(12.5, .medium))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .foregroundStyle(.primary.opacity(0.78))
+        }
+        .buttonStyle(TimeSlotPressableStyle())
+        .inkPill()
+    }
+
+    private var navigationRail: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 10) {
+                railButton(
+                    title: "首页",
+                    systemImage: "square.grid.2x2",
+                    section: .home
+                )
+                railButton(
+                    title: "倒计时",
+                    systemImage: "calendar.badge.clock",
+                    section: .countdown
+                )
+                railButton(
+                    title: "专注",
+                    systemImage: "timer",
+                    section: .pomodoro
+                )
+                railButton(
+                    title: "设置",
+                    systemImage: "gearshape",
+                    section: .settings
+                )
+            }
+            .padding(.top, 24)
+
+            Spacer(minLength: Space.xl)
+
+            Button {
+                showingShortcuts = true
+            } label: {
+                Image(systemName: "keyboard")
+                    .font(AppType.ui(15, .medium))
+                    .frame(width: 36, height: 36)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(TimeSlotPressableStyle())
+            .help("快捷键速查 (⌘/)")
+            .padding(.bottom, 22)
+        }
+        .frame(width: 68)
+    }
+
+    private func railButton(
+        title: String,
+        systemImage: String,
+        section: TimeBookSection
+    ) -> some View {
+        let isSelected = selectedSection == section
+        let isHovered = hoveredRail == section
+        return Button {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                selectedSection = section
+            }
+        } label: {
+            Image(systemName: systemImage)
+                .font(AppType.ui(15, .medium))
+                .frame(width: 36, height: 36)
+                .foregroundStyle(isSelected ? Color.primary : (isHovered ? Color.primary.opacity(0.8) : Color.primary.opacity(0.42)))
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.78))
+                            .shadow(color: Color.black.opacity(0.08), radius: 8, y: 2)
+                    } else if isHovered {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.06))
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
+        }
+        .buttonStyle(TimeSlotPressableStyle())
+        .onHover { hovering in
+            hoveredRail = hovering ? section : nil
+        }
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityValue(isSelected ? "已选中" : "未选中")
+    }
+
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                HStack(spacing: Space.m) {
-                    BrandMark(size: 34)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("时隙")
-                            .font(AppType.title(Typo.brand))
-                            .tracking(Tracking.pageTitle)
-                        Text("倒计时 · 专注")
-                            .font(AppType.caption(Typo.footnote, weight: .medium))
-                            .tracking(Tracking.caption)
-                            .foregroundStyle(.secondary)
-                    }
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(
+                        selectedSection == .countdown
+                            ? "倒计时"
+                            : (selectedSection == .pomodoro ? "番茄钟" : "设置")
+                    )
+                        .font(AppType.pageTitle(22))
+                        .tracking(-0.3)
+                    Text(
+                        selectedSection == .countdown
+                            ? "选择一个目标"
+                            : (selectedSection == .pomodoro ? "当前节奏" : "偏好与数据")
+                    )
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if selectedSection == .countdown {
@@ -255,50 +420,30 @@ struct ContentView: View {
                         showingAdd = true
                     } label: {
                         Image(systemName: "plus")
-                            .font(AppType.ui(Typo.body, .semibold))
-                            .frame(width: 30, height: 30)
+                            .font(AppType.ui(14, .medium))
+                            .frame(width: 32, height: 32)
+                            .foregroundStyle(.primary.opacity(0.78))
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(accent)
+                    .buttonStyle(TimeSlotPressableStyle())
+                    .background(circleChrome)
                     .help("新建倒计时 (⌘N)")
                     .accessibilityLabel("新建倒计时")
                     .accessibilityIdentifier("timeslot.countdown.add")
                 }
             }
             .padding(.horizontal, Space.xl)
-            .padding(.top, Space.xl)
-            .padding(.bottom, Space.l)
-
-            TimeSlotSegmentedControl(
-                options: [
-                    SegmentOption(
-                        id: TimeBookSection.countdown.rawValue,
-                        title: "倒计时",
-                        systemImage: "calendar.badge.clock",
-                        value: TimeBookSection.countdown
-                    ),
-                    SegmentOption(
-                        id: TimeBookSection.pomodoro.rawValue,
-                        title: "番茄钟",
-                        systemImage: "timer",
-                        value: TimeBookSection.pomodoro
-                    )
-                ],
-                selection: $selectedSection,
-                tint: accent
-            )
-            .labelsHidden()
-            .padding(.horizontal, Space.l)
-            .padding(.bottom, Space.m)
+            .padding(.top, 20)
+            .padding(.bottom, 14)
 
             if selectedSection == .countdown {
                 // 搜索框
                 HStack(spacing: Space.s) {
                     Image(systemName: "magnifyingglass")
+                        .font(AppType.caption(12, weight: .medium))
                         .foregroundStyle(.secondary)
                     TextField("搜索倒计时 (⌘F)", text: $searchText)
                         .textFieldStyle(.plain)
-                        .font(AppType.ui(Typo.body))
+                        .font(AppType.ui(13))
                         .focused($searchFieldFocused)
                         .accessibilityIdentifier("timeslot.countdown.search")
                     if !searchText.isEmpty {
@@ -307,21 +452,28 @@ struct ContentView: View {
                             searchFieldFocused = true
                         } label: {
                             Image(systemName: "xmark.circle.fill")
+                                .font(AppType.caption(12))
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("清除搜索")
                     }
                 }
-                .padding(.horizontal, Space.m)
-                .padding(.vertical, Space.s)
-                .background(Surface.field)
-                .clipShape(RoundedRectangle(cornerRadius: Radius.small))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.045),
+                    in: Capsule()
+                )
+                .overlay {
+                    Capsule()
+                        .stroke(searchFieldFocused ? accent.opacity(0.55) : Color.clear, lineWidth: 1.5)
+                }
+                .animation(.easeOut(duration: 0.15), value: searchFieldFocused)
                 .padding(.horizontal, Space.l)
-                .padding(.bottom, Space.s)
+                .padding(.bottom, 10)
 
-                // 状态筛选药丸栏
-                HStack(spacing: 4) {
+                HStack(spacing: 2) {
                     ForEach(CountdownFilter.allCases) { filter in
                         let isSelected = countdownFilter == filter
                         Button {
@@ -331,34 +483,33 @@ struct ContentView: View {
                         } label: {
                             Text(filter.rawValue)
                                 .font(AppType.caption(11.5, weight: isSelected ? .semibold : .regular))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
                                 .background(
-                                    isSelected ? accent.opacity(0.18) : Color.clear,
-                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    isSelected
+                                        ? Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.08)
+                                        : Color.clear,
+                                    in: Capsule()
                                 )
-                                .foregroundStyle(isSelected ? accent : Color.secondary)
+                                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                         }
                         .buttonStyle(TimeSlotPressableStyle())
                     }
                     Spacer()
                     Text("\(filteredItems.count)")
-                        .font(AppType.caption(11, weight: .semibold))
+                        .font(AppType.caption(11, weight: .medium))
                         .monospacedDigit()
-                        .foregroundStyle(accent)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(accent.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, Space.l)
-                .padding(.bottom, Space.s)
+                .padding(.bottom, 8)
 
                 ScrollView {
                     if filteredItems.isEmpty {
                         VStack(spacing: Space.s) {
                             Image(systemName: searchText.isEmpty ? "calendar.badge.plus" : "magnifyingglass")
                                 .font(AppType.ui(22, .medium))
-                                .foregroundStyle(accent)
+                                .foregroundStyle(.primary.opacity(0.55))
                                 .padding(.bottom, Space.xs)
                             Text(searchText.isEmpty ? "还没有倒计时" : "没有匹配结果")
                                 .font(AppType.ui(Typo.footnote, .semibold))
@@ -368,12 +519,17 @@ struct ContentView: View {
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
                             if searchText.isEmpty {
-                                Button("新建倒计时") {
+                                Button {
                                     showingAdd = true
+                                } label: {
+                                    Text("新建倒计时")
+                                        .font(AppType.ui(12.5, .medium))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 7)
+                                        .foregroundStyle(.primary.opacity(0.78))
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(accent)
-                                .controlSize(.small)
+                                .buttonStyle(TimeSlotPressableStyle())
+                                .inkPill()
                                 .padding(.top, Space.xs)
                             }
                         }
@@ -386,7 +542,7 @@ struct ContentView: View {
                                 CountdownRow(
                                     item: item,
                                     isSelected: item.id == store.selectedItem?.id,
-                                    accent: Color(hex: item.colorHex)
+                                    accent: accent
                                 ) {
                                     store.selectedID = item.id
                                 }
@@ -408,9 +564,6 @@ struct ContentView: View {
                                     Button(item.isPaused ? "继续" : "暂停") {
                                         store.togglePause(item)
                                     }
-                                    Button("复制进度") {
-                                        copyCountdownSummary(item)
-                                    }
                                     Button("删除", role: .destructive) {
                                         pendingDelete = item
                                     }
@@ -421,6 +574,7 @@ struct ContentView: View {
                         .padding(.horizontal, Space.m)
                     }
                 }
+                .scrollIndicators(.hidden)
 
                 Spacer(minLength: 10)
 
@@ -435,8 +589,8 @@ struct ContentView: View {
                             showingWidgetHelp = true
                         } label: {
                             Text("1:1 预览")
-                                .font(AppType.caption(10.5, weight: .semibold))
-                                .foregroundStyle(accent)
+                                .font(AppType.caption(11, weight: .medium))
+                                .foregroundStyle(.primary.opacity(0.72))
                         }
                         .buttonStyle(.plain)
                     }
@@ -451,10 +605,13 @@ struct ContentView: View {
                         pinToDesktop(item)
                     } label: {
                         Label("更新小组件内容", systemImage: "rectangle.3.group")
+                            .font(AppType.ui(12.5, .medium))
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .foregroundStyle(.primary.opacity(0.78))
                     }
-                    .buttonStyle(.bordered)
-                    .tint(accent)
+                    .buttonStyle(TimeSlotPressableStyle())
+                    .inkPill()
                     .disabled(store.selectedItem == nil)
                     .accessibilityIdentifier("timeslot.widget.sync")
                 }
@@ -468,48 +625,10 @@ struct ContentView: View {
                 settingsSidebar
             }
 
-            Divider()
-                .padding(.horizontal, Space.m)
-
-            HStack(spacing: Space.s) {
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                        selectedSection = .settings
-                    }
-                } label: {
-                    Label("设置", systemImage: "gearshape")
-                        .font(AppType.ui(Typo.footnote, .medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, Space.s)
-                        .padding(.vertical, Space.s)
-                        .foregroundStyle(selectedSection == .settings ? Color.white : Color.primary)
-                        .background(
-                            RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
-                                .fill(selectedSection == .settings ? accent : Color.clear)
-                        )
-                }
-                .buttonStyle(TimeSlotPressableStyle())
-                .accessibilityLabel("设置")
-                .accessibilityIdentifier("timeslot.settings.open")
-                .accessibilityValue(selectedSection == .settings ? "已选中" : "未选中")
-
-                Button {
-                    showingShortcuts = true
-                } label: {
-                    Image(systemName: "keyboard")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .background(Surface.nested, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-                }
-                .buttonStyle(TimeSlotPressableStyle())
-                .help("快捷键速查 (⌘/)")
-            }
-            .padding(.horizontal, Space.m)
-            .padding(.bottom, Space.m)
         }
-        .frame(width: 268)
-        .background(SidebarSurface())
+        .frame(width: 276)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .glassBoard(wash: store.accentPreset.color)
     }
 
     private var settingsSidebar: some View {
@@ -543,25 +662,22 @@ struct ContentView: View {
     }
 
     private var appVersionText: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         return "时隙 \(version) (\(build))"
     }
 
-    private func sidebarStopwatchTimeText(_ elapsed: TimeInterval) -> String {
-        let total = max(0, Int(elapsed))
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-
     private var pomodoroSidebar: some View {
         let state = store.pomodoro
-        let phaseColor = state.phase == .focus ? accent : Color(hex: state.phase.colorHex)
+        let ink: Color = {
+            if state.isStopwatchActive { return stopwatchColor }
+            let preset = store.accentPreset
+            switch state.phase {
+            case .focus: return accent
+            case .shortBreak: return Color(hex: preset.breakHex)
+            case .longBreak: return Color(hex: preset.longBreakHex)
+            }
+        }()
         let sidebarProgress: CGFloat = {
             if state.isStopwatchActive {
                 let elapsed = state.stopwatchElapsed(at: Date())
@@ -573,49 +689,29 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: Space.m) {
                 HStack {
                     Image(systemName: state.isStopwatchActive ? "stopwatch.fill" : state.phase.icon)
-                        .foregroundStyle(state.isStopwatchActive ? stopwatchColor : phaseColor)
+                        .foregroundStyle(ink.opacity(0.72))
                     Text(state.isStopwatchActive ? "正计时" : state.phase.title)
                         .font(AppType.ui(Typo.body, .medium))
                     Spacer()
                     Circle()
                         .fill(
                             (state.isStopwatchActive ? state.stopwatchRunning : state.isRunning)
-                            ? (state.isStopwatchActive ? stopwatchColor : phaseColor)
+                            ? ink
                             : Color.secondary.opacity(0.35)
                         )
                         .frame(width: 8, height: 8)
-                        .shadow(
-                            color: (state.isStopwatchActive ? state.stopwatchRunning : state.isRunning)
-                                ? (state.isStopwatchActive ? stopwatchColor : phaseColor).opacity(0.45)
-                                : .clear,
-                            radius: 3
-                        )
+                        .shadow(color: (state.isStopwatchActive ? state.stopwatchRunning : state.isRunning) ? ink.opacity(0.5) : .clear, radius: 3)
                 }
-                if state.isStopwatchActive {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(sidebarStopwatchTimeText(state.stopwatchElapsed(at: context.date)))
-                            .font(AppType.timer(Typo.timerSmall))
-                            .monospacedDigit()
-                            .foregroundStyle(stopwatchColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                    }
-                    Text(state.stopwatchRunning ? "正在计时" : "已暂停")
-                        .font(AppType.ui(Typo.footnote, .medium))
-                        .foregroundStyle(.secondary)
-                } else {
-                    PomodoroTimerText(
-                        state: state,
-                        fontSize: Typo.timerSmall,
-                        color: phaseColor
-                    )
-                    Text("已完成 \(state.completedFocusSessions) 个番茄")
-                        .font(AppType.ui(Typo.footnote, .medium))
-                        .foregroundStyle(.secondary)
-                }
+                Text(
+                    state.isStopwatchActive
+                        ? (state.stopwatchRunning ? "正在计时" : "已暂停")
+                        : (state.isRunning ? "正在计时" : (state.sessionStartedAt == nil ? "等待开始" : "已暂停"))
+                )
+                    .font(AppType.ui(Typo.footnote, .medium))
+                    .foregroundStyle(.secondary)
                 TimeSlotProgressBar(
                     progress: sidebarProgress,
-                    color: state.isStopwatchActive ? stopwatchColor : phaseColor,
+                    color: ink.opacity(0.72),
                     height: 5,
                     showsKnob: false
                 )
@@ -658,16 +754,535 @@ struct ContentView: View {
                     syncPomodoroToDesktop()
                 } label: {
                     Label("更新小组件内容", systemImage: "rectangle.3.group")
+                        .font(AppType.ui(12.5, .medium))
                         .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .foregroundStyle(.primary.opacity(0.78))
                 }
-                .buttonStyle(.bordered)
-                .tint(phaseColor)
+                .buttonStyle(TimeSlotPressableStyle())
+                .inkPill()
             }
             .padding(Space.l)
             .cardSurface()
             .padding(.horizontal, Space.m)
             .padding(.bottom, Space.l)
         }
+    }
+
+    private var homeDashboard: some View {
+        let upcoming = upcomingCountdowns
+        let next = upcoming.first ?? store.selectedItem ?? store.items.first
+        let state = store.pomodoro
+        let weekHours = homeWeekFocusSeconds / 3600
+        let goalHours = max(1, state.weeklyFocusGoalMinutes / 60)
+
+        return VStack(alignment: .leading, spacing: 14) {
+            homeCalendarBoard
+
+            HStack(alignment: .top, spacing: 14) {
+                homeMiniBoard(title: "倒计时", actionTitle: store.items.isEmpty ? "新建" : "查看全部", wash: DataGradient.base(0)) {
+                    if store.items.isEmpty {
+                        showingAdd = true
+                    } else {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                            selectedSection = .countdown
+                        }
+                    }
+                } content: {
+                    if let next {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            let remaining = next.remaining(at: context.date)
+                            homeMiniMetric(
+                                eyebrow: next.title,
+                                value: remaining > 0 ? homeRemaining(remaining) : "已到达",
+                                footnote: beijingDateString(next.targetDate, dateStyle: .abbreviated, timeStyle: .omitted),
+                                progress: remaining > 0
+                                    ? CGFloat(min(1, max(0.02, 1 - remaining / max(1, next.totalDuration))))
+                                    : 1
+                            )
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("还没有目标")
+                                .font(AppType.ui(13))
+                                .foregroundStyle(.secondary)
+                            Text("新建一个倒计时，把目标固定在这里")
+                                .font(AppType.caption())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                homeMiniBoard(title: "番茄钟", actionTitle: state.isRunning ? "回到计时" : "开始专注", wash: DataGradient.base(1)) {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                        selectedSection = .pomodoro
+                    }
+                } content: {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        homeMiniMetric(
+                            eyebrow: state.taskTitle.isEmpty ? "当前任务" : state.taskTitle,
+                            value: homePomodoroClock(state.remaining(at: context.date)),
+                            footnote: String(format: "本周 %.1f / %d 小时", weekHours, goalHours),
+                            progress: CGFloat(min(1, homeWeekFocusSeconds / max(1, Double(goalHours * 3600))))
+                        )
+                    }
+                }
+
+                homeMiniBoard(
+                    title: "正计时",
+                    actionTitle: state.stopwatchRunning ? "回到计时" : (state.isStopwatchActive ? "继续" : "开始累计"),
+                    wash: DataGradient.base(2)
+                ) {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                        selectedSection = .pomodoro
+                    }
+                } content: {
+                    if state.isStopwatchActive {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            homeMiniMetric(
+                                eyebrow: state.taskTitle.isEmpty ? "自由累计" : state.taskTitle,
+                                value: homeStopwatchText(state.stopwatchElapsed(at: context.date)),
+                                footnote: state.stopwatchRunning ? "正在累计" : "已暂停"
+                            )
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("还没有开始累计")
+                                .font(AppType.ui(13))
+                                .foregroundStyle(.secondary)
+                            Text("停止正计时后，实际用时记入今天的记录")
+                                .font(AppType.caption())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 210)
+
+            HStack(alignment: .top, spacing: 14) {
+                homeTodayRingCard
+                homeStreakCard
+                homeTimeSlotCard
+                homeWeekTotalCard
+            }
+            .frame(height: 192)
+
+            homeTrendCard
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    private var homeCalendarBoard: some View {
+        HomeHourTimeline(store: store) {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                selectedSection = .pomodoro
+            }
+        }
+    }
+
+    private func homeMiniBoard<Content: View>(
+        title: String,
+        actionTitle: String,
+        wash: Color = .clear,
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title)
+                    .font(AppType.pageTitle(15))
+                    .tracking(0.2)
+                Spacer()
+                Button(actionTitle, action: action)
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+                    .buttonStyle(TimeSlotPressableStyle())
+            }
+            content()
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassBoard(wash: wash)
+    }
+
+    private var homeTodayRingCard: some View {
+        let points = todayTaskBreakdown
+        let totalMinutes = points.reduce(0) { $0 + $1.minutes }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("今日分布")
+                    .font(AppType.pageTitle(15))
+                    .tracking(0.2)
+                Spacer()
+            }
+            if totalMinutes >= 1 {
+                Chart(points, id: \.title) { point in
+                    SectorMark(
+                        angle: .value("分钟", point.minutes),
+                        innerRadius: .ratio(0.62),
+                        angularInset: 1.5
+                    )
+                    .foregroundStyle(by: .value("任务", point.title))
+                    .cornerRadius(2)
+                }
+                .chartForegroundStyleScale(
+                    domain: points.map(\.title),
+                    range: points.map(\.color)
+                )
+                .chartLegend(.hidden)
+                .frame(height: 84)
+                .overlay(alignment: .center) {
+                    VStack(spacing: 0) {
+                        Text("\(Int(totalMinutes))")
+                            .font(.system(size: 21, weight: .light, design: .serif))
+                        Text("分钟")
+                            .font(AppType.caption(9.5))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(points.prefix(2).map(\.title).joined(separator: " · "))
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            } else {
+                Text("今天还没有专注记录")
+                    .font(AppType.ui(13))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .glassBoard(wash: DataGradient.base(0))
+    }
+
+    private var homeStreakCard: some View {
+        let days = streakDays
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("连续专注")
+                    .font(AppType.pageTitle(15))
+                    .tracking(0.2)
+                Spacer()
+                Image(systemName: "flame.fill")
+                    .font(AppType.ui(15, .medium))
+                    .foregroundStyle(DataGradient.base(1))
+            }
+            Spacer()
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text("\(days)")
+                    .font(.system(size: 42, weight: .light, design: .serif))
+                Text("天")
+                    .font(AppType.ui(14))
+                    .foregroundStyle(.secondary)
+            }
+            Text(days > 0 ? "保持节奏，今天是新的延续" : "今天完成一个阶段即可开启")
+                .font(AppType.caption())
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .glassBoard(wash: DataGradient.base(1))
+    }
+
+    private var homeTimeSlotCard: some View {
+        let slots = timeSlotBreakdown
+        let maxMinutes = max(1, slots.map(\.minutes).max() ?? 1)
+        let best = slots.max { $0.minutes < $1.minutes }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("时段分布")
+                    .font(AppType.pageTitle(15))
+                    .tracking(0.2)
+                Spacer()
+                if let best, best.minutes > 0 {
+                    Label(best.label, systemImage: best.icon)
+                        .font(AppType.caption(10.5, weight: .semibold))
+                        .foregroundStyle(DataGradient.base(2))
+                }
+            }
+            VStack(spacing: 9) {
+                ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
+                    HStack(spacing: 7) {
+                        Image(systemName: slot.icon)
+                            .font(AppType.caption(10))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.primary.opacity(0.08))
+                                Capsule()
+                                    .fill(DataGradient.palette(index)[0].opacity(0.85))
+                                    .frame(width: geo.size.width * CGFloat(slot.minutes / maxMinutes))
+                            }
+                        }
+                        .frame(height: 8)
+                        Text(slot.minutes >= 60 ? String(format: "%.1fh", slot.minutes / 60) : "\(Int(slot.minutes))m")
+                            .font(AppType.caption(10))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, alignment: .trailing)
+                    }
+                }
+            }
+            Text("近 7 天 · 按开始时段")
+                .font(AppType.caption())
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .glassBoard(wash: DataGradient.base(2))
+    }
+
+    private var homeWeekTotalCard: some View {
+        let seconds = homeWeekFocusSeconds
+        let hours = seconds / 3600
+        let goalHours = max(1, store.pomodoro.weeklyFocusGoalMinutes / 60)
+        let progress = CGFloat(min(1, seconds / max(1, Double(goalHours * 3600))))
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("本周累计")
+                    .font(AppType.pageTitle(15))
+                    .tracking(0.2)
+                Spacer()
+                Text(String(format: "%.1f / %d 小时", hours, goalHours))
+                    .font(AppType.caption(11, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(DataGradient.base(3))
+            }
+            Spacer()
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(String(format: "%.1f", hours))
+                    .font(.system(size: 34, weight: .light, design: .serif))
+                Text("小时")
+                    .font(AppType.ui(13))
+                    .foregroundStyle(.secondary)
+            }
+            TimeSlotProgressBar(
+                progress: progress,
+                color: DataGradient.base(3),
+                height: 7,
+                showsKnob: false
+            )
+            Text(String(format: "日均 %.1f 小时 · 目标 %d 小时", hours / 7, goalHours))
+                .font(AppType.caption())
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .glassBoard(wash: DataGradient.base(3))
+    }
+
+    private var homeTrendCard: some View {
+        let points = weekTrendPoints
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("近 7 天专注趋势")
+                    .font(AppType.pageTitle(15))
+                    .tracking(0.2)
+                Spacer()
+                Text("北京时间 · 周一至周日")
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+            }
+            Chart(points, id: \.day) { point in
+                BarMark(
+                    x: .value("日", point.day, unit: .day),
+                    y: .value("分钟", point.minutes),
+                    width: .fixed(22)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [DataGradient.base(0), DataGradient.base(4)],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
+                .cornerRadius(4)
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 7)) {
+                    AxisValueLabel(format: .dateTime.weekday(.narrow))
+                        .font(AppType.caption(10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) {
+                    AxisGridLine()
+                        .foregroundStyle(Surface.gridLine)
+                    AxisValueLabel()
+                        .font(AppType.caption(9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(height: 92)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .glassBoard(wash: DataGradient.base(4))
+    }
+
+    private func homeMiniMetric(eyebrow: String, value: String, footnote: String, progress: CGFloat? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(eyebrow)
+                .font(AppType.ui(13))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(value)
+                .font(AppType.timer(28))
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+            if let progress {
+                TimeSlotProgressBar(
+                    progress: progress,
+                    color: store.accentPreset.color,
+                    height: 5,
+                    showsKnob: false
+                )
+                .padding(.top, 2)
+            }
+            Text(footnote)
+                .font(AppType.caption())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var upcomingCountdowns: [CountdownItem] {
+        let now = Date()
+        return store.items
+            .filter { !$0.isPaused && $0.remaining(at: now) > 0 }
+            .sorted { $0.targetDate < $1.targetDate }
+    }
+
+    private var todayTaskBreakdown: [(title: String, minutes: Double, color: Color)] {
+        let calendar = beijingCalendar
+        let dayStart = calendar.startOfDay(for: Date())
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        var totals: [String: Double] = [:]
+        for record in store.pomodoroHistory
+        where record.phase == .focus && record.actualDuration > 0 {
+            guard record.endedAt >= dayStart, record.startedAt < dayEnd else { continue }
+            let title = PomodoroTaskPalette.normalized(record.taskTitle)
+            totals[title, default: 0] += record.actualDuration / 60
+        }
+        return totals
+            .filter { $0.value >= 1 }
+            .sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { (title: $0.key, minutes: $0.value, color: store.taskColor(for: $0.key)) }
+    }
+
+    private var streakDays: Int {
+        let calendar = beijingCalendar
+        var cursor = calendar.startOfDay(for: Date())
+        if !hasFocus(on: cursor) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: cursor) else { return 0 }
+            cursor = yesterday
+        }
+        var count = 0
+        while hasFocus(on: cursor) {
+            count += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
+        }
+        return count
+    }
+
+    private func hasFocus(on dayStart: Date) -> Bool {
+        let calendar = beijingCalendar
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        return store.pomodoroHistory.contains { record in
+            record.phase == .focus
+                && record.actualDuration >= 60
+                && record.endedAt >= dayStart
+                && record.startedAt < dayEnd
+        }
+    }
+
+    private var timeSlotBreakdown: [(label: String, minutes: Double, icon: String)] {
+        let calendar = beijingCalendar
+        let weekAgo = calendar.date(byAdding: .day, value: -6, to: Date()) ?? Date()
+        var buckets: [(label: String, minutes: Double, icon: String)] = [
+            ("凌晨", 0, "moon.stars.fill"),
+            ("上午", 0, "sunrise.fill"),
+            ("下午", 0, "sun.max.fill"),
+            ("晚上", 0, "moon.fill")
+        ]
+        for record in store.pomodoroHistory
+        where record.phase == .focus && record.actualDuration > 0 && record.endedAt >= weekAgo {
+            let hour = calendar.component(.hour, from: record.startedAt)
+            let index: Int
+            if hour < 6 { index = 0 } else if hour < 12 { index = 1 } else if hour < 18 { index = 2 } else { index = 3 }
+            buckets[index].minutes += record.actualDuration / 60
+        }
+        return buckets
+    }
+
+    private var weekTrendPoints: [(day: Date, minutes: Double)] {
+        let calendar = beijingCalendar
+        let start = PomodoroHistoryRangePolicy.weekStart(
+            containing: Date(),
+            calendar: calendar
+        )
+        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start.addingTimeInterval(7 * 86_400)
+        var totals: [Date: Double] = [:]
+        for record in store.pomodoroHistory
+        where record.phase == .focus && record.actualDuration > 0 {
+            guard record.endedAt >= start, record.startedAt < end else { continue }
+            let day = calendar.startOfDay(for: record.startedAt)
+            totals[day, default: 0] += record.actualDuration / 60
+        }
+        return (0..<7).compactMap { index in
+            guard let day = calendar.date(byAdding: .day, value: index, to: start) else { return nil }
+            return (day: day, minutes: totals[day] ?? 0)
+        }
+    }
+
+    private func homePomodoroClock(_ remaining: TimeInterval) -> String {
+        let total = max(0, Int(ceil(remaining)))
+        return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+
+    private var homeWeekFocusSeconds: Double {
+        let start = PomodoroHistoryRangePolicy.weekStart(containing: Date())
+        let end = beijingCalendar.date(byAdding: .day, value: 7, to: start) ?? start.addingTimeInterval(7 * 86_400)
+        return store.pomodoroHistory.reduce(0) { total, record in
+            guard record.phase == .focus, record.actualDuration > 0 else { return total }
+            guard record.endedAt > start, record.startedAt < end else { return total }
+            return total + record.actualDuration
+        }
+    }
+
+    private func homeRemaining(_ remaining: TimeInterval) -> String {
+        let total = max(0, Int(ceil(remaining)))
+        let days = total / 86400
+        let hours = (total % 86400) / 3600
+        let minutes = (total % 3600) / 60
+        if days > 0 { return "\(days) 天" }
+        if hours > 0 { return "\(hours) 小时" }
+        return "\(minutes) 分"
+    }
+
+    private func homeStopwatchText(_ elapsed: TimeInterval) -> String {
+        let total = max(0, Int(elapsed))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
     @ViewBuilder
@@ -683,34 +1298,24 @@ struct ContentView: View {
         }
         .id(selectedSection)
         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.988)))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassBoard(wash: store.accentPreset.color)
     }
 
     private var countdownDetail: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    (store.selectedItem.map { Color(hex: $0.colorHex).opacity(0.06) } ?? Color.clear),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .center
-            )
-            .ignoresSafeArea()
-
-            VStack(alignment: .leading, spacing: 0) {
+        return VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        Text("倒计时视图")
-                            .font(AppType.caption(Typo.body, weight: .medium))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("倒计时")
+                            .font(AppType.caption())
                             .foregroundStyle(.secondary)
-                        Text(store.selectedItem?.title ?? "时隙 · 倒计时")
-                            .font(AppType.pageTitle())
-                            .tracking(Tracking.pageTitle)
+                        Text(store.selectedItem?.title ?? "时隙")
+                            .font(AppType.pageTitle(28))
+                            .tracking(-0.4)
                             .lineLimit(1)
                     }
                     Spacer()
 
-                    // 视图切换器：卡片 / 全景时间流
                     TimeSlotSegmentedControl(
                         options: CountdownViewMode.allCases.map {
                             SegmentOption(id: $0.rawValue, title: $0.rawValue, value: $0)
@@ -718,39 +1323,24 @@ struct ContentView: View {
                         selection: $countdownViewMode,
                         tint: accent
                     )
-                    .frame(width: 170)
-
-                    Button {
-                        ZenHUDWindowController.shared.toggle(store: store)
-                    } label: {
-                        Label("禅模式", systemImage: "macwindow.badge.plus")
-                    }
-                    .buttonStyle(.bordered)
-                    .help("切换独立置顶悬浮窗 (⌘M)")
+                    .frame(width: 168)
 
                     if let selected = store.selectedItem {
-                        Button {
-                            copyCountdownSummary(selected)
-                        } label: {
-                            Label("复制", systemImage: "doc.on.doc")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("复制倒计时进度文案")
-
-                        Button {
+                        headerGhostButton(title: "编辑", systemImage: "slider.horizontal.3") {
                             showingEdit = true
-                        } label: {
-                            Label("编辑", systemImage: "slider.horizontal.3")
                         }
-                        .buttonStyle(.bordered)
                         .accessibilityIdentifier("timeslot.countdown.edit")
 
                         Button(role: .destructive) {
                             pendingDelete = selected
                         } label: {
                             Image(systemName: "trash")
+                                .font(AppType.caption(12, weight: .medium))
+                                .frame(width: 32, height: 32)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(TimeSlotPressableStyle())
+                        .background(circleChrome)
                         .accessibilityLabel("删除倒计时")
                         .accessibilityIdentifier("timeslot.countdown.delete")
                     }
@@ -777,14 +1367,17 @@ struct ContentView: View {
                     .padding(.bottom, Space.xxl)
                 } else if let selected = store.selectedItem {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: Space.xl) {
-                            CountdownHero(item: selected, accent: Color(hex: selected.colorHex))
+                        VStack(alignment: .leading, spacing: 0) {
+                            CountdownHero(item: selected, accent: accent)
+
+                            Divider()
+                                .padding(.vertical, Space.l)
 
                             HStack(spacing: Space.m) {
                                 QuickActionButton(
                                     title: selected.isPinned ? "当前小组件内容" : "设为小组件内容",
                                     icon: selected.isPinned ? "checkmark.circle.fill" : "rectangle.on.rectangle",
-                                    tint: Color(hex: selected.colorHex)
+                                    tint: accent
                                 ) {
                                     pinToDesktop(selected)
                                 }
@@ -805,13 +1398,27 @@ struct ContentView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                            CountdownTimelineCard(item: selected, accent: Color(hex: selected.colorHex))
+                            Divider()
+                                .padding(.vertical, Space.l)
+
+                            CountdownTimelineCard(item: selected, accent: accent)
+
+                            Divider()
+                                .padding(.vertical, Space.l)
 
                             infoSection(selected)
                         }
+                        .padding(Space.xl)
+                        .cardSurface(
+                            cornerRadius: Radius.board,
+                            borderOpacity: 0.08,
+                            shadowRadius: 16,
+                            shadowY: 5
+                        )
                         .padding(.horizontal, Space.xxl)
                         .padding(.bottom, Space.xxl)
                     }
+                    .scrollIndicators(.hidden)
                 } else {
                     VStack(spacing: Space.m) {
                         BrandMark(size: 52)
@@ -825,40 +1432,19 @@ struct ContentView: View {
                         Button {
                             showingAdd = true
                         } label: {
-                            Label("新建倒计时", systemImage: "plus")
+                            Text("新建倒计时")
+                                .font(AppType.ui(12.5, .medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .foregroundStyle(.primary.opacity(0.78))
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(accent)
+                        .buttonStyle(TimeSlotPressableStyle())
+                        .inkPill()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
-    }
-
-    private func copyCountdownSummary(_ item: CountdownItem) {
-        let remaining = item.remaining(at: Date())
-        let remainingStr = remaining > 0 ? formatCompactTime(remaining) : "已达成"
-        let dateStr = beijingDateString(item.targetDate, dateStyle: .long, timeStyle: .shortened)
-        let text = "🎯 [\(item.title)] 目标时间：\(dateStr)，距离目标还有 \(remainingStr) · 来自时隙"
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        showingCopiedFeedback = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
-            showingCopiedFeedback = false
-        }
-    }
-
-    private func formatCompactTime(_ value: TimeInterval) -> String {
-        let total = max(0, Int(ceil(value)))
-        let d = total / 86400
-        let h = (total % 86400) / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if d > 0 { return "\(d)天 \(h)小时 \(m)分" }
-        if h > 0 { return "\(h)小时 \(m)分 \(s)秒" }
-        return "\(m)分 \(s)秒"
-    }
 
     private func infoSection(_ item: CountdownItem) -> some View {
         VStack(alignment: .leading, spacing: Space.l) {
@@ -888,8 +1474,7 @@ struct ContentView: View {
                     icon: item.isPinned ? "rectangle.3.group.fill" : "rectangle.3.group"
                 )
             }
-            .padding(.vertical, Space.m)
-            .cardSurface(cornerRadius: Radius.small)
+            .padding(.vertical, Space.s)
         }
     }
 
@@ -1030,7 +1615,7 @@ struct CountdownRoadmapTimelineView: View {
                 if groups.isEmpty {
                     VStack(spacing: Space.m) {
                         Image(systemName: "calendar.badge.plus")
-                            .font(.system(size: 36))
+                            .font(AppType.ui(36))
                             .foregroundStyle(accent)
                         Text("时间流暂无目标")
                             .font(AppType.ui(Typo.headline, .medium))
@@ -1045,7 +1630,7 @@ struct CountdownRoadmapTimelineView: View {
                             VStack(alignment: .leading, spacing: Space.m) {
                                 HStack(spacing: Space.s) {
                                     Image(systemName: group.icon)
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(AppType.ui(13, .semibold))
                                         .foregroundStyle(group.color)
                                     Text(group.title)
                                         .font(AppType.ui(Typo.body, .semibold))
@@ -1075,6 +1660,7 @@ struct CountdownRoadmapTimelineView: View {
                     }
                 }
             }
+            .scrollIndicators(.hidden)
         }
     }
 }
@@ -1137,7 +1723,7 @@ private struct RoadmapItemRow: View {
                             onTogglePause()
                         } label: {
                             Image(systemName: item.isPaused ? "play.fill" : "pause.fill")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(AppType.caption(10, weight: .semibold))
                                 .frame(width: 22, height: 22)
                         }
                         .buttonStyle(.bordered)
@@ -1148,7 +1734,7 @@ private struct RoadmapItemRow: View {
                             onEdit()
                         } label: {
                             Image(systemName: "slider.horizontal.3")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(AppType.caption(10, weight: .semibold))
                                 .frame(width: 22, height: 22)
                         }
                         .buttonStyle(.bordered)
@@ -1204,10 +1790,10 @@ struct KeyboardShortcutsSheet: View {
     }
 
     private let generalShortcuts: [ShortcutItem] = [
+        ShortcutItem(keys: ["⌘", "0"], description: "回到首页"),
         ShortcutItem(keys: ["⌘", "1"], description: "切换至倒计时"),
         ShortcutItem(keys: ["⌘", "2"], description: "切换至番茄钟"),
         ShortcutItem(keys: ["⌘", "N"], description: "新建倒计时"),
-        ShortcutItem(keys: ["⌘", "M"], description: "切换独立置顶禅模式悬浮窗"),
         ShortcutItem(keys: ["⌘", "F"], description: "搜索倒计时"),
         ShortcutItem(keys: ["⌘", "/"], description: "打开快捷键指南"),
         ShortcutItem(keys: ["Esc"], description: "关闭弹窗 / 取消")
@@ -1270,6 +1856,7 @@ struct KeyboardShortcutsSheet: View {
                 }
                 .padding(Space.xl)
             }
+            .scrollIndicators(.hidden)
 
             Divider()
 
@@ -1295,10 +1882,10 @@ struct KeyboardShortcutsSheet: View {
                         .font(AppType.caption(12, weight: .semibold))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
-                        .background(Surface.field, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                                .stroke(Color.primary.opacity(0.14), lineWidth: 1)
                         )
                 }
             }
@@ -1413,7 +2000,7 @@ private struct WidgetGuideSheet: View {
             VStack(alignment: .leading, spacing: Space.xl) {
                 HStack(spacing: Space.m) {
                     Image(systemName: syncInfo.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(AppType.ui(14, .semibold))
                         .foregroundStyle(syncInfo.color)
                         .frame(width: 30, height: 30)
                         .background(
@@ -1462,6 +2049,7 @@ private struct WidgetGuideSheet: View {
             }
             .padding(Space.xl)
         }
+        .scrollIndicators(.hidden)
     }
 
     private var syncInfo: (title: String, subtitle: String, icon: String, color: Color) {
@@ -1580,7 +2168,7 @@ private struct InteractiveWidgetSimulatorView: View {
                     .frame(width: 90, height: 90)
 
                     Image(systemName: "timer")
-                        .font(.system(size: 24))
+                        .font(AppType.ui(24))
                         .foregroundStyle(accent)
                 }
 
@@ -1635,7 +2223,7 @@ private struct InteractiveWidgetSimulatorView: View {
                         .frame(width: 100, height: 100)
 
                         Image(systemName: "timer")
-                            .font(.system(size: 28))
+                            .font(AppType.ui(28))
                             .foregroundStyle(accent)
                     }
 
@@ -1707,7 +2295,7 @@ private struct WidgetTypeTile: View {
     var body: some View {
         HStack(spacing: Space.s) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(AppType.caption(12, weight: .semibold))
                 .foregroundStyle(accent)
                 .frame(width: 24, height: 24)
                 .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -1731,32 +2319,30 @@ struct CountdownRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                // Apple Reminders 风格的色彩圆形徽标
                 ZStack {
                     Circle()
-                        .fill(accent.opacity(isSelected ? 0.24 : 0.14))
-                        .frame(width: 28, height: 28)
+                        .fill(Color.primary.opacity(isSelected ? 0.10 : 0.055))
+                        .frame(width: 26, height: 26)
 
                     Image(systemName: item.isPaused ? "pause.fill" : (item.isPinned ? "pin.fill" : "calendar"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(accent)
+                        .font(AppType.caption(10, weight: .semibold))
+                        .foregroundStyle(Color.primary.opacity(0.72))
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 4) {
                         Text(item.title)
-                            .font(AppType.ui(13, isSelected ? .semibold : .medium))
+                            .font(AppType.ui(13, isSelected ? .semibold : .regular))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
 
                         if item.isPinned {
                             Image(systemName: "rectangle.3.group.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(accent.opacity(0.85))
+                                .font(AppType.caption(9))
+                                .foregroundStyle(.secondary)
                         }
                     }
 
-                    // 每行只让即将到期（<24h）的项目按秒刷新
                     let remaining = item.remaining(at: Date())
                     if item.isPaused || remaining > 86400 {
                         rowProgress(remaining)
@@ -1769,31 +2355,26 @@ struct CountdownRow: View {
 
                 Spacer(minLength: 4)
 
-                // 右侧 Apple 风格数字读数
                 let remaining = item.remaining(at: Date())
                 let isUrgent = remaining > 0 && remaining < 86400 && !item.isPaused
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(remaining > 0 ? (remaining >= 86400 ? "\(max(1, Int(remaining / 86400))) 天" : formatCompact(remaining)) : "已到达")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(AppType.caption(12, weight: .medium))
                         .monospacedDigit()
-                        .foregroundStyle(remaining <= 0 ? Color.secondary : (isUrgent ? Color.orange : accent))
+                        .foregroundStyle(remaining <= 0 ? Color.secondary : (isUrgent ? Color.orange : Color.primary.opacity(0.78)))
 
                     if isUrgent {
                         Text("今天")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(AppType.caption(9, weight: .semibold))
                             .foregroundStyle(Color.orange)
                     }
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? accent.opacity(0.12) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isSelected ? accent.opacity(0.24) : Color.clear, lineWidth: 0.8)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? Color.primary.opacity(0.06) : Color.clear)
             )
         }
         .buttonStyle(TimeSlotPressableStyle())
@@ -1808,11 +2389,13 @@ struct CountdownRow: View {
     private func rowProgress(_ remaining: TimeInterval) -> some View {
         let total = max(1, item.totalDuration)
         let prog = remaining <= 0 ? 1.0 : min(1.0, max(0.0, 1.0 - remaining / total))
-        return ProgressView(value: prog)
-            .progressViewStyle(.linear)
-            .tint(accent)
-            .frame(width: 95)
-            .scaleEffect(x: 1, y: 0.6, anchor: .leading)
+        return TimeSlotProgressBar(
+            progress: CGFloat(prog),
+            color: accent,
+            height: 5,
+            showsKnob: false
+        )
+        .frame(width: 88)
     }
 
     private func remainingTextValue(_ remaining: TimeInterval) -> String {
@@ -1834,6 +2417,7 @@ struct CountdownRow: View {
 struct CountdownHero: View {
     let item: CountdownItem
     let accent: Color
+    @Environment(\.colorScheme) private var colorScheme
 
     @ViewBuilder
     var body: some View {
@@ -1861,16 +2445,15 @@ struct CountdownHero: View {
                         StatusPillBadge(
                             title: item.isPaused ? "已暂停" : (isDone ? "已完成" : "进行中 \(percent)%"),
                             icon: item.isPaused ? "pause.circle" : (isDone ? "checkmark.circle.fill" : nil),
-                            color: item.isPaused ? .secondary : (isDone ? .green : accent),
+                            color: .primary,
                             isPulsing: !item.isPaused && !isDone
                         )
                     }
 
-                    // 模块化时间单元卡片展示
                     if isDone {
                         HStack(spacing: Space.m) {
                             Image(systemName: "flag.checkered.circle.fill")
-                                .font(.system(size: 38))
+                                .font(AppType.ui(38))
                                 .foregroundStyle(Color.green)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("目标达成")
@@ -1891,7 +2474,7 @@ struct CountdownHero: View {
 
                 ZStack {
                     Circle()
-                        .fill(accent.opacity(0.12))
+                        .fill(accent.opacity(0.14))
                         .frame(width: 54, height: 54)
                     Image(systemName: isDone ? "checkmark.circle.fill" : (item.isPaused ? "pause.fill" : "timer"))
                         .font(AppType.ui(Typo.icon, .medium))
@@ -1927,19 +2510,12 @@ struct CountdownHero: View {
                 Spacer()
                 Text("北京时间 (UTC+8)")
                     .font(AppType.caption())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(Space.xl)
         .overlay {
             ConfettiEffectView(isActive: isDone)
         }
-        .cardSurface(
-            cornerRadius: Radius.large,
-            borderOpacity: 0.09,
-            shadowRadius: 14,
-            shadowY: 4
-        )
     }
 
     private var formattedTotalDays: String {
@@ -2006,7 +2582,7 @@ struct CountdownTimelineCard: View {
                         VStack(spacing: 2) {
                             Text("已过去 \(elapsedDays) 天 · 剩余 \(max(0, remainingDays)) 天")
                                 .font(AppType.caption(11.5, weight: .medium))
-                                .foregroundStyle(accent)
+                                .foregroundStyle(.primary.opacity(0.72))
                         }
 
                         Spacer()
@@ -2021,8 +2597,6 @@ struct CountdownTimelineCard: View {
                     }
                 }
             }
-            .padding(Space.m)
-            .background(Surface.nested, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
         }
     }
 }
@@ -2033,15 +2607,22 @@ struct QuickActionButton: View {
     let tint: Color
     let action: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(AppType.ui(Typo.footnote, .medium))
-                .padding(.horizontal, Space.m)
-                .padding(.vertical, Space.s)
+                .font(AppType.ui(12.5, .medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .foregroundStyle(.primary.opacity(0.78))
+                .background(
+                    Capsule()
+                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.045))
+                        .overlay(Capsule().stroke(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.55), lineWidth: 1))
+                )
         }
-        .buttonStyle(.bordered)
-        .tint(tint)
+        .buttonStyle(TimeSlotPressableStyle())
         .accessibilityIdentifier("timeslot.quick-action.\(title)")
     }
 }
@@ -2253,7 +2834,7 @@ struct CountdownEditor: View {
                                         .overlay {
                                             if colorHex == option.hex {
                                                 Image(systemName: "checkmark")
-                                                    .font(.system(size: 10, weight: .bold))
+                                                    .font(AppType.caption(10, weight: .bold))
                                                     .foregroundStyle(.white)
                                             }
                                         }
@@ -2351,4 +2932,645 @@ struct CountdownEditor: View {
         case .edit: return "编辑倒计时"
         }
     }
+}
+
+private struct HomeHourTimeline: View {
+    @ObservedObject var store: CountdownStore
+    let onOpenFocus: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var pan = CGSize.zero
+    @State private var scaleX: CGFloat = 1
+    @State private var scaleY: CGFloat = 1
+    @GestureState private var drag = CGSize.zero
+    @State private var hovering = false
+    @State private var hoverPoint = CGPoint.zero
+    @State private var scrollMonitor: Any?
+    @State private var lastPlotWidth: CGFloat = 0
+    @State private var lastWorldWidth: CGFloat = 0
+    @State private var pinchStartScaleX: CGFloat = 1
+    @State private var pinchStartScaleY: CGFloat = 1
+    @State private var pinchStartPan = CGSize.zero
+    @State private var isPinching = false
+
+    private let hourGutter: CGFloat = 36
+    private let headerHeight: CGFloat = 42
+    private let fillDayCount: CGFloat = 7
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("时间轴")
+                    .font(AppType.pageTitle(22))
+                    .tracking(-0.3)
+                Spacer()
+                Button("回到今天") {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.9)) {
+                        scaleX = 1
+                        scaleY = 1
+                        pan = CGSize(width: min(0, lastPlotWidth - lastWorldWidth), height: 0)
+                    }
+                }
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(.secondary)
+                .buttonStyle(TimeSlotPressableStyle())
+            }
+
+            GeometryReader { geo in
+                let days = timelineDays()
+                let livePan = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
+                let plotWidth = max(1, geo.size.width - hourGutter)
+                let scrubberHeight: CGFloat = 22
+                let plotHeight = max(1, geo.size.height - headerHeight - scrubberHeight)
+                let fillWidth = plotWidth / fillDayCount
+                let fitWidth = plotWidth / CGFloat(max(days.count, 1))
+                let dayWidth = max(fitWidth, fillWidth * scaleX)
+                let hourHeight = (plotHeight / 24) * scaleY
+                let hourStep: Int = {
+                    if hourHeight < 9 { return 12 }
+                    if hourHeight < 13 { return 6 }
+                    if hourHeight < 20 { return 3 }
+                    return 1
+                }()
+                let worldWidth = CGFloat(days.count) * dayWidth
+                let worldHeight = 24 * hourHeight
+                let clamped = clampPan(livePan, plotWidth: plotWidth, plotHeight: plotHeight, worldWidth: worldWidth, worldHeight: worldHeight)
+
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        Color.clear.frame(width: hourGutter, height: headerHeight)
+                        dayHeader(days: days, dayWidth: dayWidth)
+                            .frame(width: plotWidth, height: headerHeight, alignment: .leading)
+                            .offset(x: clamped.width)
+                            .clipped()
+                    }
+                    HStack(spacing: 0) {
+                        hourGutterView(hourHeight: hourHeight, hourStep: hourStep)
+                            .frame(width: hourGutter, height: plotHeight, alignment: .top)
+                            .offset(y: clamped.height)
+                            .clipped()
+
+                        ZStack(alignment: .topLeading) {
+                            timelinePlot(days: days, dayWidth: dayWidth, hourHeight: hourHeight, hourStep: hourStep)
+                            ForEach(timelineBlocks(days: days)) { block in
+                                timelineBlockView(block, dayWidth: dayWidth, hourHeight: hourHeight)
+                            }
+                            ForEach(Array(dailyMinutes(days: days).enumerated()), id: \.offset) { index, minutes in
+                                if minutes >= 30 {
+                                    Text(minutes >= 60 ? String(format: "%.1fh", minutes / 60) : "\(Int(minutes))m")
+                                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                        .monospacedDigit()
+                                        .foregroundStyle(minutes >= 180 ? store.accentPreset.color : Color.secondary.opacity(0.9))
+                                        .position(x: CGFloat(index) * dayWidth + dayWidth / 2, y: worldHeight - 10)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                            nowLine(days: days, dayWidth: dayWidth, hourHeight: hourHeight)
+                        }
+                        .frame(width: worldWidth, height: worldHeight, alignment: .topLeading)
+                        .offset(clamped)
+                        .frame(width: plotWidth, height: plotHeight, alignment: .topLeading)
+                        .clipped()
+                        .contentShape(Rectangle())
+                        .gesture(panGesture)
+                        .simultaneousGesture(zoomGesture)
+                        .animation(reduceMotion ? nil : .interactiveSpring(response: 0.18, dampingFraction: 1.0), value: scaleX)
+                        .animation(reduceMotion ? nil : .interactiveSpring(response: 0.18, dampingFraction: 1.0), value: scaleY)
+                    }
+
+                    HStack(spacing: 0) {
+                        Color.clear.frame(width: hourGutter, height: scrubberHeight)
+                        panScrubber(
+                            days: days,
+                            plotWidth: plotWidth,
+                            worldWidth: worldWidth,
+                            clampedX: clamped.width
+                        )
+                        .frame(width: plotWidth, height: scrubberHeight)
+                    }
+                }
+                .onAppear {
+                    pan = CGSize(width: min(0, plotWidth - worldWidth), height: 0)
+                    lastPlotWidth = plotWidth
+                    lastWorldWidth = worldWidth
+                    installScrollMonitor()
+                }
+                .onChange(of: worldWidth) { _, newWidth in
+                    lastWorldWidth = newWidth
+                    lastPlotWidth = plotWidth
+                }
+                .onDisappear { removeScrollMonitor() }
+            }
+            .frame(minHeight: 280)
+            .onHover { hovering = $0 }
+            .onContinuousHover { phase in
+                if case .active(let point) = phase {
+                    hoverPoint = CGPoint(x: point.x - hourGutter, y: point.y - headerHeight)
+                }
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, minHeight: 340, alignment: .topLeading)
+        .background(alignment: .topTrailing) {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            DataGradient.base(0).opacity(colorScheme == .dark ? 0.10 : 0.12),
+                            DataGradient.base(1).opacity(colorScheme == .dark ? 0.05 : 0.06)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 300, height: 300)
+                .blur(radius: 70)
+                .offset(x: 70, y: -70)
+                .allowsHitTesting(false)
+        }
+        .glassBoard(wash: store.accentPreset.color)
+    }
+
+    private var panGesture: some Gesture {
+        DragGesture(minimumDistance: 2)
+            .updating($drag) { value, state, _ in
+                state = value.translation
+            }
+            .onEnded { value in
+                pan.width += value.translation.width
+                pan.height += value.translation.height
+            }
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                if !isPinching {
+                    isPinching = true
+                    pinchStartScaleX = scaleX
+                    pinchStartScaleY = scaleY
+                    pinchStartPan = pan
+                }
+                zoom(
+                    fromScaleX: pinchStartScaleX,
+                    fromScaleY: pinchStartScaleY,
+                    fromPan: pinchStartPan,
+                    factorX: value,
+                    factorY: value,
+                    around: hoverPoint,
+                    dayCount: timelineDays().count
+                )
+            }
+            .onEnded { _ in
+                isPinching = false
+            }
+    }
+
+    private func zoom(
+        fromScaleX: CGFloat,
+        fromScaleY: CGFloat,
+        fromPan: CGSize,
+        factorX: CGFloat,
+        factorY: CGFloat,
+        around focal: CGPoint,
+        dayCount: Int = 7
+    ) {
+        // 水平缩小到「刚好填满视口」的初始倍率为止，垂直缩小到 24 小时填满为止，
+        // 任何方向缩放都不会在底部或右侧留下空白。
+        let minX = minScaleX(for: dayCount)
+        let nextX = min(2.8, max(minX, fromScaleX * factorX))
+        let nextY = min(3.0, max(1.0, fromScaleY * factorY))
+        let widthFactor = nextX / max(fromScaleX, 0.001)
+        let heightFactor = nextY / max(fromScaleY, 0.001)
+        scaleX = nextX
+        scaleY = nextY
+        pan.width = focal.x - (focal.x - fromPan.width) * widthFactor
+        pan.height = focal.y - (focal.y - fromPan.height) * heightFactor
+    }
+
+    private func clampPan(_ value: CGSize, plotWidth: CGFloat, plotHeight: CGFloat, worldWidth: CGFloat, worldHeight: CGFloat) -> CGSize {
+        let minX = min(0, plotWidth - worldWidth)
+        let minY = min(0, plotHeight - worldHeight)
+        return CGSize(
+            width: min(0, max(minX, value.width)),
+            height: min(0, max(minY, value.height))
+        )
+    }
+
+    private func panScrubber(days: [Date], plotWidth: CGFloat, worldWidth: CGFloat, clampedX: CGFloat) -> some View {
+        let travel = max(1, worldWidth - plotWidth)
+        let visibleRatio = min(1, plotWidth / max(worldWidth, 1))
+        let progress = min(1, max(0, -clampedX / travel))
+
+        return GeometryReader { geo in
+            let trackWidth = geo.size.width
+            let thumbWidth = max(22, trackWidth * visibleRatio)
+            let maxOffset = max(0, trackWidth - thumbWidth)
+            let thumbX = maxOffset * progress
+            let tickCount = 17
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 4)
+
+                HStack(spacing: 0) {
+                    ForEach(0..<tickCount, id: \.self) { index in
+                        Rectangle()
+                            .fill(Color.primary.opacity(index % 4 == 0 ? 0.30 : 0.14))
+                            .frame(width: 1, height: index % 4 == 0 ? 4 : 2.5)
+                        if index < tickCount - 1 { Spacer(minLength: 0) }
+                    }
+                }
+                .padding(.horizontal, 5)
+                .frame(height: 4)
+
+                Capsule()
+                    .fill(Color.primary.opacity(0.40))
+                    .frame(width: thumbWidth, height: 4)
+                    .offset(x: thumbX)
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let x = min(maxOffset, max(0, value.location.x - thumbWidth / 2))
+                        let next = maxOffset == 0 ? 1 : x / maxOffset
+                        pan.width = -next * travel
+                    }
+            )
+            .help(scrubberHelp(days: days, progress: progress, visibleRatio: visibleRatio))
+        }
+    }
+
+    private func scrubberHelp(days: [Date], progress: CGFloat, visibleRatio: CGFloat) -> String {
+        guard !days.isEmpty else { return "日期范围" }
+        let startIndex = Int((CGFloat(days.count - 1) * progress).rounded())
+        let endIndex = min(days.count - 1, startIndex + max(0, Int((CGFloat(days.count) * visibleRatio).rounded()) - 1))
+        let start = days[min(max(startIndex, 0), days.count - 1)]
+        let end = days[endIndex]
+        let formatter = DateFormatter()
+        formatter.locale = beijingLocale
+        formatter.timeZone = beijingTimeZone
+        formatter.dateFormat = "M月d日"
+        return "\(formatter.string(from: start)) - \(formatter.string(from: end)) · 共 \(days.count) 天"
+    }
+
+    private func dayHeader(days: [Date], dayWidth: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            ForEach(days, id: \.self) { day in
+                let isToday = beijingCalendar.isDateInToday(day)
+                VStack(spacing: 2) {
+                    Text(weekdayLabel(day))
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text("\(beijingCalendar.component(.day, from: day))")
+                        .font(.system(size: 14, weight: isToday ? .regular : .ultraLight, design: .default))
+                        .foregroundStyle(isToday ? Color.primary : Color.primary.opacity(0.62))
+                }
+                .frame(width: dayWidth, height: headerHeight)
+            }
+        }
+    }
+
+    private func hourGutterView(hourHeight: CGFloat, hourStep: Int) -> some View {
+        VStack(spacing: 0) {
+            ForEach(0..<24, id: \.self) { hour in
+                Text(hour % hourStep == 0 ? String(format: "%02d", hour) : "")
+                    .font(.system(size: 11, weight: .light, design: .default))
+                    .foregroundStyle(.secondary)
+                    .frame(width: hourGutter - 8, height: hourHeight, alignment: .topTrailing)
+            }
+        }
+        .padding(.trailing, 8)
+    }
+
+    private func timelinePlot(days: [Date], dayWidth: CGFloat, hourHeight: CGFloat, hourStep: Int) -> some View {
+        Canvas { context, size in
+            for hour in 0...24 {
+                guard hour % hourStep == 0 else { continue }
+                let y = CGFloat(hour) * hourHeight
+                var line = Path()
+                line.move(to: CGPoint(x: 0, y: y))
+                line.addLine(to: CGPoint(x: size.width, y: y))
+                context.stroke(line, with: .color(Color.primary.opacity(hour % 6 == 0 ? 0.08 : 0.035)), lineWidth: 1)
+            }
+            for (index, day) in days.enumerated() {
+                let x = CGFloat(index) * dayWidth
+                var line = Path()
+                line.move(to: CGPoint(x: x, y: 0))
+                line.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(line, with: .color(Color.primary.opacity(homeIsWeekend(day) ? 0.05 : 0.03)), lineWidth: 1)
+                if homeIsWeekend(day) {
+                    context.fill(
+                        Path(CGRect(x: x, y: 0, width: dayWidth, height: size.height)),
+                        with: .color(Color.primary.opacity(0.025))
+                    )
+                }
+            }
+        }
+    }
+
+    private func timelineBlockView(_ block: TimelineBlock, dayWidth: CGFloat, hourHeight: CGFloat) -> some View {
+        let laneWidth = (dayWidth - 8) / CGFloat(max(block.laneCount, 1))
+        let x = CGFloat(block.dayIndex) * dayWidth + 4 + laneWidth * CGFloat(block.lane)
+        let y = CGFloat(block.startHour) * hourHeight + 1
+        let height = max(6, CGFloat(block.durationHours) * hourHeight - 2)
+        // 专注越长块越深，形成可读的热力层次。
+        let intensity: Double
+        switch block.durationHours {
+        case 1.5...: intensity = 0.72
+        case 0.75..<1.5: intensity = 0.52
+        case 0.3..<0.75: intensity = 0.38
+        default: intensity = 0.26
+        }
+        return Button(action: onOpenFocus) {
+            Group {
+                if height > 24 && laneWidth > 46 {
+                    Text(block.title)
+                        .font(.system(size: 11, weight: .regular))
+                        .lineLimit(1)
+                        .foregroundStyle(Color.primary.opacity(0.82))
+                        .padding(.horizontal, 6)
+                        .padding(.top, 4)
+                        .frame(width: laneWidth - 2, height: height, alignment: .topLeading)
+                } else {
+                    Color.clear.frame(width: laneWidth - 2, height: height)
+                }
+            }
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                block.color.opacity(min(1, intensity + 0.16)),
+                                block.color.opacity(intensity)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(block.color.opacity(0.35), lineWidth: 0.5)
+                    }
+            }
+            .shadow(color: block.color.opacity(0.22), radius: 3, y: 1)
+            .help("\(block.title)  \(block.timeLabel)")
+        }
+        .buttonStyle(TimeSlotPressableStyle())
+        .contextMenu {
+            if block.live {
+                Text("进行中的计时请先停止")
+            } else {
+                Button("删除这条记录", role: .destructive) {
+                    store.deletePomodoroHistory(ids: block.recordIDs, title: block.title)
+                }
+            }
+        }
+        .offset(x: x, y: y)
+    }
+
+    private func nowLine(days: [Date], dayWidth: CGFloat, hourHeight: CGFloat) -> some View {
+        let now = Date()
+        guard let todayIndex = days.firstIndex(where: { beijingCalendar.isDate($0, inSameDayAs: now) }) else {
+            return AnyView(EmptyView())
+        }
+        let minutes = beijingCalendar.component(.hour, from: now) * 60
+            + beijingCalendar.component(.minute, from: now)
+        let y = CGFloat(minutes) / 60 * hourHeight
+        let accent = store.accentPreset.color
+        return AnyView(
+            Rectangle()
+                .fill(accent.opacity(0.85))
+                .frame(width: dayWidth - 8, height: 2)
+                .shadow(color: accent.opacity(0.45), radius: 3)
+                .offset(x: CGFloat(todayIndex) * dayWidth + 4, y: y)
+        )
+    }
+
+    private func dailyMinutes(days: [Date]) -> [Double] {
+        var totals = Array(repeating: 0.0, count: days.count)
+        for block in timelineBlocks(days: days) where !block.live {
+            totals[block.dayIndex] += block.durationHours * 60
+        }
+        return totals
+    }
+
+    private func installScrollMonitor() {
+        removeScrollMonitor()
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify]) { event in
+            guard hovering else { return event }
+            if event.type == .magnify {
+                let factor = 1 + event.magnification
+                zoom(
+                    fromScaleX: scaleX,
+                    fromScaleY: scaleY,
+                    fromPan: pan,
+                    factorX: factor,
+                    factorY: factor,
+                    around: hoverPoint,
+                    dayCount: timelineDays().count
+                )
+                return nil
+            }
+            if event.modifierFlags.contains(.command) {
+                // ⌘+滚轮：水平缩放；加 Shift 只缩放垂直。
+                let factor = event.scrollingDeltaY > 0 ? 1.045 : 0.957
+                zoom(
+                    fromScaleX: scaleX,
+                    fromScaleY: scaleY,
+                    fromPan: pan,
+                    factorX: event.modifierFlags.contains(.shift) ? 1 : factor,
+                    factorY: event.modifierFlags.contains(.shift) ? factor : 1,
+                    around: hoverPoint,
+                    dayCount: timelineDays().count
+                )
+                return nil
+            }
+            // 普通滚轮：上下滚动直接缩放时间轴高度，左右滚动平移。
+            // 缩放幅度跟随滚动速度，滚动越快缩放越快，手感更自然。
+            if event.scrollingDeltaY != 0 {
+                let magnitude = min(abs(event.scrollingDeltaY), 60)
+                let factor = 1 + magnitude * 0.003 * (event.scrollingDeltaY > 0 ? 1 : -1)
+                zoom(
+                    fromScaleX: scaleX,
+                    fromScaleY: scaleY,
+                    fromPan: pan,
+                    factorX: 1,
+                    factorY: factor,
+                    around: hoverPoint,
+                    dayCount: timelineDays().count
+                )
+            }
+            if event.scrollingDeltaX != 0 {
+                pan.width += event.scrollingDeltaX
+            }
+            return nil
+        }
+    }
+
+    private func removeScrollMonitor() {
+        if let scrollMonitor {
+            NSEvent.removeMonitor(scrollMonitor)
+            self.scrollMonitor = nil
+        }
+    }
+
+    private func minScaleX(for dayCount: Int) -> CGFloat {
+        min(1, fillDayCount / CGFloat(max(dayCount, 1)))
+    }
+
+    private func timelineDays() -> [Date] {
+        let today = beijingCalendar.startOfDay(for: Date())
+        var starts = store.pomodoroHistory
+            .filter { ($0.phase == .focus || $0.status == .stopwatch) && $0.actualDuration > 0 }
+            .map { beijingCalendar.startOfDay(for: $0.startedAt) }
+        if store.pomodoro.isStopwatchActive {
+            let elapsed = store.pomodoro.stopwatchElapsed(at: Date())
+            let liveStart = store.pomodoro.stopwatchSessionStartedAt ?? Date().addingTimeInterval(-elapsed)
+            starts.append(beijingCalendar.startOfDay(for: liveStart))
+        }
+        let oldest = starts.min() ?? (beijingCalendar.date(byAdding: .day, value: -6, to: today) ?? today)
+        let capped = beijingCalendar.date(byAdding: .day, value: -179, to: today) ?? today
+        let start = max(oldest, capped)
+        var days: [Date] = []
+        var cursor = start
+        while cursor <= today {
+            days.append(cursor)
+            guard let next = beijingCalendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return days
+    }
+
+    private func timelineBlocks(days: [Date]) -> [TimelineBlock] {
+        guard let first = days.first, let last = days.last else { return [] }
+        let windowStart = first
+        let windowEnd = last.addingTimeInterval(86_400)
+        var blocks: [TimelineBlock] = []
+
+        func appendSpan(title: String, start: Date, end: Date, live: Bool, ids: [UUID]) {
+            var cursor = max(start, windowStart)
+            let finish = min(end, windowEnd)
+            guard finish > cursor else { return }
+            let colorHex = store.pomodoroTasks.first {
+                PomodoroTaskPalette.normalized($0.title) == title
+            }?.colorHex
+            let color = Color(hex: colorHex?.isEmpty == false ? colorHex! : PomodoroTaskPalette.fallbackColorHex(for: title))
+            while cursor < finish {
+                let day = beijingCalendar.startOfDay(for: cursor)
+                let nextDay = beijingCalendar.date(byAdding: .day, value: 1, to: day) ?? cursor.addingTimeInterval(86_400)
+                let sliceEnd = min(finish, nextDay)
+                if let dayIndex = days.firstIndex(of: day) {
+                    let startHour = cursor.timeIntervalSince(day) / 3600
+                    let durationHours = max(0.18, sliceEnd.timeIntervalSince(cursor) / 3600)
+                    blocks.append(
+                        TimelineBlock(
+                            id: "\(title)-\(day.timeIntervalSinceReferenceDate)-\(startHour)",
+                            title: title,
+                            color: color,
+                            dayIndex: dayIndex,
+                            startHour: startHour,
+                            durationHours: durationHours,
+                            timeLabel: live ? "进行中" : hourRangeLabel(from: cursor, to: sliceEnd),
+                            lane: 0,
+                            laneCount: 1,
+                            recordIDs: ids,
+                            live: live
+                        )
+                    )
+                }
+                cursor = sliceEnd
+            }
+        }
+
+        for record in store.pomodoroHistory {
+            let isFocus = record.phase == .focus && record.actualDuration > 0
+            let isStopwatch = record.status == .stopwatch && record.actualDuration > 0
+            guard isFocus || isStopwatch else { continue }
+            appendSpan(
+                title: PomodoroTaskPalette.normalized(record.taskTitle),
+                start: record.startedAt,
+                end: record.endedAt,
+                live: false,
+                ids: [record.id]
+            )
+        }
+
+        let state = store.pomodoro
+        let liveTitle = PomodoroTaskPalette.normalized(state.taskTitle)
+        if state.isStopwatchActive {
+            let elapsed = state.stopwatchElapsed(at: Date())
+            let start = state.stopwatchSessionStartedAt ?? Date().addingTimeInterval(-elapsed)
+            appendSpan(title: liveTitle, start: start, end: Date(), live: true, ids: [])
+        } else if state.isRunning, state.phase == .focus {
+            let start = state.sessionStartedAt ?? state.activeStartedAt ?? Date()
+            appendSpan(title: liveTitle, start: start, end: Date(), live: true, ids: [])
+        }
+        return packedLanes(blocks)
+    }
+
+    private func packedLanes(_ blocks: [TimelineBlock]) -> [TimelineBlock] {
+        var grouped: [Int: [TimelineBlock]] = [:]
+        for block in blocks {
+            grouped[block.dayIndex, default: []].append(block)
+        }
+        var result: [TimelineBlock] = []
+        for dayBlocks in grouped.values {
+            let sorted = dayBlocks.sorted { $0.startHour < $1.startHour }
+            var laneEnds: [Double] = []
+            var placed: [(block: TimelineBlock, lane: Int)] = []
+            for block in sorted {
+                let lane = laneEnds.firstIndex { $0 <= block.startHour + 0.02 } ?? laneEnds.count
+                if lane == laneEnds.count {
+                    laneEnds.append(block.startHour + block.durationHours)
+                } else {
+                    laneEnds[lane] = block.startHour + block.durationHours
+                }
+                placed.append((block, lane))
+            }
+            let laneCount = max(1, laneEnds.count)
+            result.append(contentsOf: placed.map { item in
+                var next = item.block
+                next.lane = item.lane
+                next.laneCount = laneCount
+                return next
+            })
+        }
+        return result
+    }
+
+    private func weekdayLabel(_ date: Date) -> String {
+        let names = ["日", "一", "二", "三", "四", "五", "六"]
+        return names[beijingCalendar.component(.weekday, from: date) - 1]
+    }
+
+    private func hourRangeLabel(from start: Date, to end: Date) -> String {
+        let startHour = beijingCalendar.component(.hour, from: start)
+        let startMinute = beijingCalendar.component(.minute, from: start)
+        let endHour = beijingCalendar.component(.hour, from: end)
+        let endMinute = beijingCalendar.component(.minute, from: end)
+        return String(format: "%d:%02d-%d:%02d", startHour, startMinute, endHour, endMinute)
+    }
+
+    private func homeIsWeekend(_ date: Date) -> Bool {
+        [1, 7].contains(beijingCalendar.component(.weekday, from: date))
+    }
+}
+
+private struct TimelineBlock: Identifiable {
+    let id: String
+    let title: String
+    let color: Color
+    let dayIndex: Int
+    let startHour: Double
+    let durationHours: Double
+    let timeLabel: String
+    var lane: Int
+    var laneCount: Int
+    let recordIDs: [UUID]
+    let live: Bool
 }

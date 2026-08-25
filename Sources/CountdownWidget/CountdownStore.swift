@@ -453,7 +453,7 @@ final class CountdownStore: ObservableObject {
         let storedTimeUnit = CountdownStore.loadSharedString(forKey: widgetTimeUnitKey) ?? "auto"
         widgetTimeUnit = Self.validWidgetTimeUnits.contains(storedTimeUnit) ? storedTimeUnit : "auto"
         let storedID = countdownDefaults.string(forKey: "selectedCountdownID").flatMap(UUID.init(uuidString:))
-        accentPreset = ColorPreset(rawValue: countdownDefaults.string(forKey: accentPresetKey) ?? "") ?? .teal
+        accentPreset = ColorPreset(rawValue: countdownDefaults.string(forKey: accentPresetKey) ?? "") ?? .graphite
         appearanceMode = AppAppearance(rawValue: countdownDefaults.string(forKey: appearanceModeKey) ?? "") ?? .system
         NSApp.appearance = appearanceMode.nsAppearance
         selectedID = storedID.flatMap { id in items.contains(where: { $0.id == id }) ? id : nil } ?? items.first?.id
@@ -934,6 +934,47 @@ final class CountdownStore: ObservableObject {
         )
     }
 
+    func deletePomodoroHistory(ids: [UUID], title: String? = nil) {
+        let idSet = Set(ids)
+        guard !idSet.isEmpty else { return }
+        let snapshot = pomodoroHistory.filter { idSet.contains($0.id) }
+        guard !snapshot.isEmpty else { return }
+        pomodoroHistory.removeAll { idSet.contains($0.id) }
+        let label = title ?? snapshot.first.map { PomodoroTaskPalette.normalized($0.taskTitle) } ?? "阶段"
+        offerUndo(
+            .pomodoroRecordsDeleted(count: snapshot.count, title: label),
+            historySnapshot: snapshot
+        )
+    }
+
+    /// 修正一条历史记录的起止时间与任务名，实际时长按新的墙钟重新计算。
+    /// 用于补救「忘了停止计时」导致的异常长/短记录。
+    func updatePomodoroHistoryRecord(id: UUID, startedAt: Date, endedAt: Date, taskTitle: String) {
+        guard let index = pomodoroHistory.firstIndex(where: { $0.id == id }) else { return }
+        let end = max(startedAt, endedAt)
+        let wall = end.timeIntervalSince(startedAt)
+        guard wall > 0 else { return }
+        let previous = pomodoroHistory[index]
+        let previousWall = previous.endedAt.timeIntervalSince(previous.startedAt)
+        let newActual: TimeInterval
+        if previousWall > 0, previous.actualDuration <= previousWall {
+            // 原记录含暂停（实际用时小于墙钟），按比例缩放保持语义
+            newActual = previous.actualDuration * (wall / previousWall)
+        } else {
+            newActual = wall
+        }
+        pomodoroHistory[index] = PomodoroSessionRecord(
+            id: previous.id,
+            phase: previous.phase,
+            taskTitle: PomodoroTaskPalette.normalized(taskTitle),
+            plannedDuration: previous.plannedDuration,
+            actualDuration: newActual,
+            startedAt: startedAt,
+            endedAt: end,
+            status: previous.status
+        )
+    }
+
     func undoLastAction() {
         guard let action = undoableAction else { return }
         switch action {
@@ -959,7 +1000,7 @@ final class CountdownStore: ObservableObject {
             countdownCompletionPlayed.remove(snapshot.item.id)
             rescheduleCountdownNotifications()
 
-        case .pomodoroHistoryCleared:
+        case .pomodoroHistoryCleared, .pomodoroRecordsDeleted:
             guard let snapshot = pomodoroHistoryDeletionSnapshot else {
                 clearUndoState()
                 return

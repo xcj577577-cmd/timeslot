@@ -40,14 +40,39 @@ func beijingDateString(
 /// 品牌色只在这里定义。Logo、强调色与状态色都从这组颜色派生，
 /// 避免主应用、表单和小组件出现“差不多的青绿”。
 enum BrandPalette {
-    static let ink = Color(hex: "#0A1926")
-    static let deepTeal = Color(hex: "#103D3B")
-    static let teal = Color(hex: "#35B79F")
-    static let mint = Color(hex: "#8CE4D0")
-    static let gold = Color(hex: "#E8C27A")
-    static let goldHighlight = Color(hex: "#F3D69B")
-    static let coral = Color(hex: "#D86F52")
-    static let indigo = Color(hex: "#5A78B8")
+    static let ink = Color(hex: "#1A1A1F")
+    static let deepTeal = Color(hex: "#1E3A36")
+    static let teal = Color(hex: "#2BB8A3")
+    static let mint = Color(hex: "#7EE0CF")
+    static let gold = Color(hex: "#E2B84A")
+    static let goldHighlight = Color(hex: "#F4E3A3")
+    static let coral = Color(hex: "#E07A3D")
+    static let indigo = Color(hex: "#5B7CDE")
+}
+
+/// 数据洞察的渐变调色板：每张统计卡一种柔和渐变，与品牌同族但更丰富。
+/// 顺序固定，任务/时段的分类色按序取用，保证图例与图表一致。
+enum DataGradient {
+    static func palette(_ index: Int) -> [Color] {
+        let palettes: [[Color]] = [
+            [Color(hex: "#2BB8A3"), Color(hex: "#7EE0CF")],       // 青绿
+            [Color(hex: "#E2B84A"), Color(hex: "#F4E3A3")],       // 金
+            [Color(hex: "#E07A3D"), Color(hex: "#F2A878")],       // 珊瑚橙
+            [Color(hex: "#7A9E6B"), Color(hex: "#A9C4A0")],       // 苔绿
+            [Color(hex: "#9B6BD8"), Color(hex: "#C3A3E8")],       // 紫
+            [Color(hex: "#E04A7E"), Color(hex: "#F58FB2")],       // 玫瑰
+            [Color(hex: "#C9A227"), Color(hex: "#E3C96A")],       // 深金
+            [Color(hex: "#D8903A"), Color(hex: "#EFC48A")]        // 琥珀
+        ]
+        return palettes[index % palettes.count]
+    }
+
+    static func base(_ index: Int) -> Color { palette(index)[0] }
+
+    /// 卡片顶部的一抹氛围色带：低透明度渐变，不给读数添噪。
+    static func wash(_ index: Int, isDark: Bool) -> Color {
+        base(index).opacity(isDark ? 0.16 : 0.10)
+    }
 }
 
 /// 品牌母题的几何原语：右倾的金色平行四边形。
@@ -108,9 +133,7 @@ enum Surface {
     static let border = Color.primary.opacity(0.10)
 }
 
-/// 侧栏和窗口画布只做轻微明度分层。
-/// `underPageBackgroundColor` 在浅色 Aqua 下是中灰色，适合页面背后的衬底，
-/// 不适合作为常驻侧栏；强制从深色切回浅色时会显得像外观没有刷新。
+/// 侧栏衬底。工作台左轨直接铺在画布上，不再单独铺一层色板。
 struct SidebarSurface: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -126,19 +149,67 @@ struct SidebarSurface: View {
     }
 }
 
+/// 主画布：按当前颜色主题染色，首页和其他页共用同一块底。
+struct FrostedCanvas: View {
+    var theme: ColorPreset = .graphite
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let wash = theme.wash(isDark: colorScheme == .dark)
+        ZStack {
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [Color(hex: theme.canvasDark[0]), Color(hex: theme.canvasDark[1]), Color(hex: theme.canvasDark[2])]
+                    : [Color(hex: theme.canvasLight[0]), Color(hex: theme.canvasLight[1]), Color(hex: theme.canvasLight[2])],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(wash.opacity(colorScheme == .dark ? 0.22 : 0.42))
+                .frame(width: 640, height: 640)
+                .blur(radius: 140)
+                .offset(x: -200, y: -280)
+
+            Circle()
+                .fill(theme.color.opacity(colorScheme == .dark ? 0.10 : 0.16))
+                .frame(width: 420, height: 420)
+                .blur(radius: 120)
+                .offset(x: 340, y: 280)
+
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            theme.color.opacity(colorScheme == .dark ? 0.12 : 0.10),
+                            BrandPalette.gold.opacity(colorScheme == .dark ? 0.05 : 0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 380, height: 380)
+                .blur(radius: 130)
+                .offset(x: 40, y: -340)
+        }
+        .ignoresSafeArea()
+    }
+}
+
 enum Radius {
     static let small: CGFloat = 8
     static let medium: CGFloat = 12
     static let large: CGFloat = 16
+    static let board: CGFloat = 24
     static let pill: CGFloat = 999
 }
 
-/// 统一字体入口。
+/// 统一字体入口。Logo 仍用衬线；其余界面用圆体，中文自动落到苹方圆体。
 ///
-/// - ui：界面正文。使用 macOS 系统字形，保证中文、拉丁字母和控件文字的阅读稳定性。
-/// - title：标题。使用系统半粗，不用圆体抢正文的注意力。
-/// - pageTitle：页面主标题。中等字重，配合更大的字号建立清晰的页面入口。
-/// - timer：计时数字。圆体 + 等宽数字，走秒时宽度稳定且有品牌识别度。
+/// - ui：界面正文。
+/// - title：小节标题。
+/// - pageTitle：页面主标题，字重更轻。
+/// - timer：计时数字，等宽圆体。
 /// - caption：辅助小字。
 enum AppType {
     static func ui(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
@@ -149,13 +220,11 @@ enum AppType {
         .system(size: size, weight: .semibold, design: .default)
     }
 
-    /// 页面主标题：系统半粗字重，中文自动落到苹方，避免大标题显得发胀。
     static func pageTitle(_ size: CGFloat = Typo.pageTitle) -> Font {
-        .system(size: size, weight: .semibold, design: .default)
+        .system(size: size, weight: .medium, design: .default)
     }
 
     static func timer(_ size: CGFloat) -> Font {
-        // medium 字重：56pt 大数字用 semibold 会发胖，medium 更接近系统计时器质感的轻盈读数。
         .system(size: size, weight: .medium, design: .rounded)
     }
 
@@ -164,46 +233,59 @@ enum AppType {
     }
 }
 
-/// 统一卡片表面：浅色底 + 细描边 + 极轻阴影。
-/// 之前每张卡各写各的 overlay/stroke，深浅和圆角都不一致，视觉上零碎。
+/// 内嵌卡片表面：比磨砂看板更实一层，保证叠层可读。
+/// 浅色用较高不透明度白纸感，深色用低透玻璃感，始终与磨砂外层拉开层级。
 struct CardSurface: ViewModifier {
     var cornerRadius: CGFloat = Radius.medium
     var borderOpacity: Double = 0.10
     var shadowRadius: CGFloat = 12
     var shadowY: CGFloat = 3
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Surface.card)
+                    .fill(Color.white.opacity(colorScheme == .dark ? 0.09 : 0.62))
                     .overlay {
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.035), Color.clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(colorScheme == .dark ? 0.05 : 0.20),
+                                        Color.clear
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                     }
             }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.primary.opacity(borderOpacity), lineWidth: 1)
+                    .stroke(
+                        Color.primary.opacity(colorScheme == .dark ? borderOpacity + 0.08 : borderOpacity),
+                        lineWidth: 1
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: Color.black.opacity(0.055), radius: shadowRadius, x: 0, y: shadowY)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.10 : 0.055), radius: shadowRadius, x: 0, y: shadowY)
     }
 }
 
 struct NestedSurface: ViewModifier {
     var cornerRadius: CGFloat = Radius.small
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content
-            .background(Surface.nested)
+            .background(
+                Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42),
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.primary.opacity(0.055), lineWidth: 1)
+                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.06), lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -226,6 +308,67 @@ extension View {
 
     func nestedSurface(cornerRadius: CGFloat = Radius.small) -> some View {
         modifier(NestedSurface(cornerRadius: cornerRadius))
+    }
+
+    func glassBoard(cornerRadius: CGFloat = Radius.board, wash: Color = .clear) -> some View {
+        modifier(GlassBoard(cornerRadius: cornerRadius, wash: wash))
+    }
+
+    func inkPill() -> some View {
+        modifier(InkPillChrome())
+    }
+}
+
+/// 工作台幽灵按钮底：浅纸面胶囊，不跟强调色。
+struct InkPillChrome: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42))
+                    .overlay(Capsule().stroke(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.55), lineWidth: 1))
+            )
+    }
+}
+
+/// 工作台看板：浮在暖色画布上的磨砂圆角板，左右两块彼此分开。
+struct GlassBoard: ViewModifier {
+    var cornerRadius: CGFloat = Radius.board
+    var wash: Color = .clear
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(Color.white.opacity(colorScheme == .dark ? 0.05 : 0.52))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(wash.opacity(colorScheme == .dark ? 0.10 : 0.14))
+                    }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(colorScheme == .dark ? 0.16 : 0.86),
+                                wash.opacity(colorScheme == .dark ? 0.22 : 0.28)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(color: wash.opacity(colorScheme == .dark ? 0.18 : 0.10), radius: 20, y: 8)
     }
 }
 
@@ -276,47 +419,30 @@ enum AppAppearance: String, Codable, CaseIterable, Identifiable {
 /// 品牌强调色预设。每个预设提供浅色/深色两档主色，
 /// 深色档比浅色档亮一档，保证两种外观下都清晰可读。
 enum ColorPreset: String, Codable, CaseIterable, Identifiable {
-    case teal
-    case coral
-    case indigo
-    case violet
     case graphite
 
     var id: String { rawValue }
 
-    var title: String {
-        switch self {
-        case .teal: return "极光青"
-        case .coral: return "日落橙"
-        case .indigo: return "经典蓝"
-        case .violet: return "优雅紫"
-        case .graphite: return "深空灰"
-        }
+    var title: String { "石墨灰" }
+
+    var subtitle: String { "中性纸面，石墨点缀" }
+
+    var lightHex: String { "#5C5C66" }
+
+    var darkHex: String { "#A8A8B0" }
+
+    var canvasLight: [String] { ["#F4F4F6", "#F7F7F8", "#EEEEF0"] }
+
+    var canvasDark: [String] { ["#161618", "#1B1B1E", "#141416"] }
+
+    func wash(isDark: Bool) -> Color {
+        Color(hex: isDark ? canvasDark[1] : canvasLight[0])
     }
 
-    /// 浅色外观下的主色 (Apple HIG Precision)。
-    var lightHex: String {
-        switch self {
-        case .teal: return "#00A396"
-        case .coral: return "#FF9500"
-        case .indigo: return "#007AFF"
-        case .violet: return "#AF52DE"
-        case .graphite: return "#8E8E93"
-        }
-    }
+    var breakHex: String { "#6B6B74" }
 
-    /// 深色外观下的主色：通透清亮，符合 Apple Dark Mode 标准。
-    var darkHex: String {
-        switch self {
-        case .teal: return "#30D1C7"
-        case .coral: return "#FF9F0A"
-        case .indigo: return "#0A84FF"
-        case .violet: return "#BF5AF2"
-        case .graphite: return "#98989D"
-        }
-    }
+    var longBreakHex: String { "#4F4F58" }
 
-    /// 跟随系统深浅外观的动态主色。
     var color: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -364,13 +490,13 @@ struct SegmentOption<Value: Hashable>: Identifiable {
     }
 }
 
-/// 品牌化分段控件。macOS 原生 segmented Picker 在失焦时会退回系统蓝/灰，
-/// 这里把选中态固定为时隙的青绿色，确保窗口状态变化时视觉仍然稳定。
+/// 分段控件：选中态用墨色纸面，不再铺一层强调色。
 struct TimeSlotSegmentedControl<Value: Hashable>: View {
     let options: [SegmentOption<Value>]
     @Binding var selection: Value
     let tint: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Namespace private var selectionAnimation
 
     var body: some View {
@@ -390,40 +516,32 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
                         }
                         Text(option.title)
                     }
-                    .font(AppType.ui(Typo.footnote, isSelected ? .semibold : .medium))
+                    .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: 32)
-                    .padding(.horizontal, Space.s)
-                    .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.85))
+                    .frame(minHeight: 30)
+                    .padding(.horizontal, 8)
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                     .background(
                         Group {
                             if isSelected {
-                                RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [tint, tint.opacity(0.88)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
+                                Capsule()
+                                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.08))
                                     .matchedGeometryEffect(id: "selection", in: selectionAnimation)
-                                    .shadow(color: tint.opacity(0.32), radius: 5, y: 1.5)
                             }
                         }
                     )
                 }
                 .buttonStyle(TimeSlotPressableStyle())
-                .contentShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+                .contentShape(Capsule())
                 .accessibilityLabel(option.title)
                 .accessibilityIdentifier("timeslot.segment.\(option.id)")
                 .accessibilityValue(isSelected ? "已选中" : "未选中")
             }
         }
         .padding(3)
-        .background(Surface.field, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.medium, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        .background(
+            Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.045),
+            in: Capsule()
         )
     }
 }
@@ -450,16 +568,12 @@ struct StatusPillBadge: View {
             Text(title)
                 .font(AppType.caption(Typo.caption, weight: .semibold))
         }
-        .foregroundStyle(color)
+        .foregroundStyle(Color.primary.opacity(0.78))
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
         .background(
-            color.opacity(0.12),
+            Color.primary.opacity(0.06),
             in: Capsule()
-        )
-        .overlay(
-            Capsule()
-                .stroke(color.opacity(0.24), lineWidth: 1)
         )
     }
 }
@@ -636,7 +750,216 @@ struct TimeSlotRing: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.45), value: progress)
+        .animation(reduceMotion ? nil : .linear(duration: 0.08), value: progress)
+    }
+}
+
+/// 辉光渐变计时环：Moonshot 式宇宙光感，多层柔光 + 角向渐变弧 + 头部辉光点 + 金色楔形尖端。
+struct TimeSlotGlowRing: View {
+    let progress: CGFloat
+    let color: Color
+    var lineWidth: CGFloat = 12
+    var showsGlow: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let clamped = min(1, max(0, progress))
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            let radius = max(0, (side - lineWidth) / 2)
+            let theta = Angle.degrees(-90 + Double(clamped) * 360)
+            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            let tip = CGPoint(
+                x: center.x + CGFloat(cos(theta.radians)) * radius,
+                y: center.y + CGFloat(sin(theta.radians)) * radius
+            )
+
+            ZStack {
+                // 多层柔光：从环向外晕开
+                if showsGlow && clamped > 0.01 {
+                    Circle()
+                        .stroke(color.opacity(0.05), lineWidth: lineWidth + 26)
+                        .blur(radius: 18)
+                    Circle()
+                        .stroke(color.opacity(0.10), lineWidth: lineWidth + 12)
+                        .blur(radius: 9)
+                }
+
+                // 底层轨道
+                Circle()
+                    .stroke(color.opacity(0.10), lineWidth: lineWidth)
+
+                // 角向渐变进度弧：头部亮、尾段淡，像光在环上游走
+                Circle()
+                    .trim(from: 0, to: clamped)
+                    .stroke(
+                        AngularGradient(
+                            colors: [
+                                color.opacity(0.18),
+                                color.opacity(0.75),
+                                color.opacity(0.95)
+                            ],
+                            center: .center,
+                            startAngle: .degrees(-90),
+                            endAngle: .degrees(-90 + 360)
+                        ),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: showsGlow ? color.opacity(0.45) : .clear, radius: 9)
+
+                // 头部辉光点：紧贴进度头的亮芯
+                if clamped > 0.02 {
+                    Circle()
+                        .fill(color)
+                        .frame(width: lineWidth * 0.85, height: lineWidth * 0.85)
+                        .position(tip)
+                        .shadow(color: color.opacity(0.9), radius: 7)
+
+                    // 金色时隙楔形
+                    TimeSlotWedge()
+                        .fill(
+                            LinearGradient(
+                                colors: [BrandPalette.goldHighlight, BrandPalette.gold],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: lineWidth * 0.62, height: lineWidth * 1.45)
+                        .rotationEffect(.degrees(Double(clamped) * 360))
+                        .position(tip)
+                        .shadow(color: BrandPalette.gold.opacity(showsGlow ? 0.52 : 0.25), radius: 3.5)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .animation(reduceMotion ? nil : .linear(duration: 0.08), value: progress)
+    }
+}
+
+// MARK: - 星点背景与光带仪表（Moonshot 式宇宙质感）
+
+/// 静谧星点：极淡的点阵铺在卡片/画布上，缓慢闪烁，不抢内容，只提供宇宙氛围。
+struct StarField: View {
+    var density: Int = 64
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: reduceMotion ? 10 : 0.3)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            Canvas { context, size in
+                for index in 0..<density {
+                    let x = CGFloat((index * 137) % 1000) / 1000 * size.width
+                    let y = CGFloat((index * 331) % 1000) / 1000 * size.height
+                    let radius = CGFloat(1.0 + CGFloat((index * 7) % 10) * 0.16)
+                    // 每颗星独立相位闪烁，幅度更大
+                    let phase = Double((index * 47) % 100) / 100 * .pi * 2
+                    let twinkle = 0.55 + 0.45 * sin(t * 1.1 + phase)
+                    let baseAlpha = 0.22 + CGFloat((index * 13) % 8) * 0.06
+                    let alpha = baseAlpha * CGFloat(twinkle)
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: x, y: y, width: radius, height: radius)),
+                        with: .color(Color.primary.opacity(alpha))
+                    )
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// 光带仪表计时器：超大辉光数字 + 水平渐变光带进度 + 头部光点与金色楔形。
+/// 彻底取代圆环，数字是绝对主角，进度像一束光沿轨道推进。
+struct TimeSlotGlowMeter: View {
+    let progress: CGFloat
+    let color: Color
+    let phaseTitle: String
+    let phaseIcon: String
+    let timeText: String
+    let isRunning: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var glowBarWidth: CGFloat = 300
+
+    var body: some View {
+        let clamped = min(1, max(0, progress))
+        VStack(spacing: 22) {
+            // 阶段胶囊
+            HStack(spacing: 8) {
+                Image(systemName: phaseIcon)
+                Text(phaseTitle)
+            }
+            .font(AppType.ui(14, .medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(color.opacity(0.12), in: Capsule())
+            .overlay(Capsule().stroke(color.opacity(0.28), lineWidth: 1))
+            .symbolEffect(.pulse, isActive: isRunning)
+
+            // 超大辉光数字
+            Text(timeText)
+                .font(.system(size: 96, weight: .regular, design: .monospaced))
+                .tracking(-2)
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .shadow(color: color.opacity(isRunning ? 0.55 : 0.28), radius: 22)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .frame(maxWidth: 360)
+
+            // 水平渐变光带：头部亮、尾段淡，带光点推进
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(color.opacity(0.10))
+                    .frame(height: 10)
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [color.opacity(0.4), color, Color.white.opacity(0.9)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(10, glowBarWidth * clamped), height: 10)
+                    .shadow(color: color.opacity(0.5), radius: 7)
+
+                if clamped > 0.02 {
+                    Circle()
+                        .fill(Color.white.opacity(0.95))
+                        .frame(width: 13, height: 13)
+                        .offset(x: max(0, glowBarWidth * clamped) - 6.5)
+                        .shadow(color: Color.white.opacity(0.9), radius: 7)
+
+                    TimeSlotWedge()
+                        .fill(
+                            LinearGradient(
+                                colors: [BrandPalette.goldHighlight, BrandPalette.gold],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 8, height: 16)
+                        .offset(x: max(0, glowBarWidth * clamped) - 2)
+                        .shadow(color: BrandPalette.gold.opacity(0.6), radius: 4)
+                }
+            }
+            .frame(width: glowBarWidth, height: 18)
+            .animation(reduceMotion ? nil : .linear(duration: 0.12), value: progress)
+
+            // 状态
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isRunning ? color : Color.secondary.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                    .shadow(color: isRunning ? color.opacity(0.6) : .clear, radius: 4)
+                Text(isRunning ? "正在计时" : "已暂停")
+                    .font(AppType.caption(12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

@@ -52,10 +52,12 @@ There is no account, no advertising, and no server-side upload of your time reco
 - **Countdowns**: Create, edit, pause, resume, or delete any goal. Receive a macOS local notification when it arrives.
 - **Pomodoro**: Automatically move through focus, short breaks, and long breaks, with configurable durations and round counts.
 - **Stopwatch**: Accumulate focus time from zero and record the session by task when you stop.
-- **Focus insights**: Review trends and task distribution across all history, today, the last 7 days, this month, or a custom date range.
+- **Home dashboard**: Use a zoomable timeline, live countdown/Pomodoro/stopwatch cards, data insights, and a 7-day trend to understand your current rhythm.
+- **Focus insights**: Review trends and task distribution across all history, today, by week, the last 7 days, this month, or a custom date range.
+- **History editing**: Right-click a session to correct its start/end time or task. Duration is recalculated from the updated wall-clock times.
 - **Safe backups**: Export or import JSON. Before importing, TimeSlot must successfully create a backup of the current data.
 - **Reliable upgrades**: Local migrations keep a snapshot of the previous version and only mark migration complete after normalization succeeds.
-- **System-level experience**: Notifications, sounds, appearance, accent colors, reduced motion, and keyboard shortcuts are supported.
+- **System-level experience**: Notifications, sounds, system/light/dark appearance, reduced motion, and keyboard shortcuts are supported.
 
 ## Widgets that stay on your desktop
 
@@ -72,13 +74,26 @@ TimeSlot uses native WidgetKit widgets—not floating windows—so they never co
 
 ## Interface preview
 
-This is a screenshot from the current release, showing the Pomodoro and stopwatch workspace.
+These screenshots show the current interface: the home dashboard, countdown workspace, and focus workspace.
 
 <p align="center">
-  <img src="./docs/images/pomodoro-overview.jpg" alt="TimeSlot Pomodoro and stopwatch workspace" width="820" />
+  <img src="./docs/images/home-overview.jpg" alt="TimeSlot home timeline and focus insights dashboard" width="820" />
 </p>
 
-<p align="center"><sub>Focus workspace: Pomodoro, stopwatch, current task, and session stats in one view.</sub></p>
+<p align="center"><sub>Home dashboard: timeline, live timer cards, focus insights, and a 7-day trend in one workspace.</sub></p>
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="./docs/images/countdown-overview.jpg" alt="TimeSlot countdown workspace" width="520" />
+      <br /><sub>Countdown workspace: goal progress, milestones, and widget actions in one board.</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="./docs/images/pomodoro-overview.jpg" alt="TimeSlot focus workspace" width="520" />
+      <br /><sub>Focus workspace: Pomodoro, stopwatch, current task, and session stats in one board.</sub>
+    </td>
+  </tr>
+</table>
 
 <table>
   <tr>
