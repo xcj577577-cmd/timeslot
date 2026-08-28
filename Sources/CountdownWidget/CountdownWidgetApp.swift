@@ -708,106 +708,257 @@ struct ContentView: View {
     }
 
     private var homeDashboard: some View {
-        let upcoming = upcomingCountdowns
-        let next = upcoming.first ?? store.selectedItem ?? store.items.first
+        VStack(alignment: .leading, spacing: Space.l) {
+            homeCommandDeck
+
+            HStack(alignment: .top, spacing: Space.l) {
+                homeCalendarBoard
+                    .frame(maxWidth: .infinity)
+
+                homeSignalDeck
+                    .frame(width: 286)
+            }
+
+            homeTrendCard
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var homeCommandDeck: some View {
+        let next = upcomingCountdowns.first ?? store.selectedItem ?? store.items.first
         let state = store.pomodoro
-        let weekHours = homeWeekFocusSeconds / 3600
         let goalHours = max(1, state.weeklyFocusGoalMinutes / 60)
 
-        return VStack(alignment: .leading, spacing: 14) {
-            homeCalendarBoard
-
-            HStack(alignment: .top, spacing: 14) {
-                homeMiniBoard(title: "倒计时", actionTitle: store.items.isEmpty ? "新建" : "查看全部", wash: DataGradient.base(0)) {
-                    if store.items.isEmpty {
-                        showingAdd = true
-                    } else {
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                            selectedSection = .countdown
+        return HStack(alignment: .top, spacing: Space.xl) {
+            VStack(alignment: .leading, spacing: Space.m) {
+                HStack(alignment: .center) {
+                    Label("下一目标", systemImage: "calendar.badge.clock")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        if next == nil {
+                            showingAdd = true
+                        } else {
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                                selectedSection = .countdown
+                            }
                         }
+                    } label: {
+                        Image(systemName: next == nil ? "plus" : "arrow.up.right")
+                            .font(AppType.ui(13, .semibold))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
                     }
-                } content: {
-                    if let next {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            let remaining = next.remaining(at: context.date)
-                            homeMiniMetric(
-                                eyebrow: next.title,
-                                value: remaining > 0 ? homeRemaining(remaining) : "已到达",
-                                footnote: beijingDateString(next.targetDate, dateStyle: .abbreviated, timeStyle: .omitted),
-                                progress: remaining > 0
-                                    ? CGFloat(min(1, max(0.02, 1 - remaining / max(1, next.totalDuration))))
-                                    : 1
-                            )
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("还没有目标")
-                                .font(AppType.ui(13))
-                                .foregroundStyle(.secondary)
-                            Text("新建一个倒计时，把目标固定在这里")
-                                .font(AppType.caption())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    .buttonStyle(TimeSlotPressableStyle())
+                    .inkPill()
+                    .help(next == nil ? "新建倒计时" : "打开倒计时")
+                    .accessibilityLabel(next == nil ? "新建倒计时" : "打开倒计时")
                 }
 
-                homeMiniBoard(title: "番茄钟", actionTitle: state.isRunning ? "回到计时" : "开始专注", wash: DataGradient.base(1)) {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                        selectedSection = .pomodoro
-                    }
-                } content: {
+                if let next {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
-                        homeMiniMetric(
-                            eyebrow: state.taskTitle.isEmpty ? "当前任务" : state.taskTitle,
-                            value: homePomodoroClock(state.remaining(at: context.date)),
-                            footnote: String(format: "本周 %.1f / %d 小时", weekHours, goalHours),
-                            progress: CGFloat(min(1, homeWeekFocusSeconds / max(1, Double(goalHours * 3600))))
+                        let remaining = next.remaining(at: context.date)
+                        let progress = CGFloat(min(1, max(0.02, 1 - remaining / max(1, next.totalDuration))))
+
+                        VStack(alignment: .leading, spacing: Space.s) {
+                            Text(next.title)
+                                .font(AppType.pageTitle(26))
+                                .lineLimit(1)
+                            HStack(alignment: .lastTextBaseline, spacing: Space.m) {
+                                Text(remaining > 0 ? homeRemaining(remaining) : "已到达")
+                                    .font(AppType.timer(52))
+                                    .monospacedDigit()
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.62)
+                                Text(beijingDateString(next.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))
+                                    .font(AppType.caption())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            TimeSlotProgressBar(
+                                progress: progress,
+                                color: DataSignal.color(hex: next.colorHex, isDark: colorScheme == .dark),
+                                height: 8,
+                                showsKnob: true,
+                                showsMilestones: true
+                            )
+                            .accessibilityLabel("\(next.title) 倒计时进度")
+                            .accessibilityValue("\(Int(progress * 100))%")
+                        }
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text("建立一个目标")
+                            .font(AppType.pageTitle(26))
+                        Text("让最重要的截止日固定在工作台上")
+                            .font(AppType.ui(Typo.footnote))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 112, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider()
+                .frame(height: 174)
+
+            VStack(alignment: .leading, spacing: Space.m) {
+                HStack {
+                    Label("当前专注", systemImage: state.isStopwatchActive ? "stopwatch.fill" : state.phase.icon)
+                        .font(AppType.ui(Typo.footnote, .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                            selectedSection = .pomodoro
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.right")
+                            .font(AppType.ui(13, .semibold))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(TimeSlotPressableStyle())
+                    .inkPill()
+                    .help("打开专注")
+                    .accessibilityLabel("打开专注")
+                }
+
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let isStopwatch = state.isStopwatchActive
+                    let isRunning = isStopwatch ? state.stopwatchRunning : state.isRunning
+                    let time = isStopwatch
+                        ? homeStopwatchText(state.stopwatchElapsed(at: context.date))
+                        : homePomodoroClock(state.remaining(at: context.date))
+                    let task = state.taskTitle.isEmpty ? "当前任务" : state.taskTitle
+
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text(task)
+                            .font(AppType.ui(Typo.body, .medium))
+                            .lineLimit(1)
+                        Text(time)
+                            .font(AppType.timer(34))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                        Text(isRunning ? "正在计时" : (isStopwatch ? "等待继续" : "下一次专注"))
+                            .font(AppType.caption())
+                            .foregroundStyle(isRunning ? store.accentPreset.color : .secondary)
+                        TimeSlotProgressBar(
+                            progress: isStopwatch
+                                ? CGFloat((state.stopwatchElapsed(at: context.date).truncatingRemainder(dividingBy: 60)) / 60)
+                                : CGFloat(min(1, max(0, state.elapsed(at: context.date) / max(1, state.duration(for: state.phase))))),
+                            color: store.accentPreset.color,
+                            height: 6,
+                            showsKnob: false
                         )
                     }
                 }
 
-                homeMiniBoard(
-                    title: "正计时",
-                    actionTitle: state.stopwatchRunning ? "回到计时" : (state.isStopwatchActive ? "继续" : "开始累计"),
-                    wash: DataGradient.base(2)
-                ) {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                        selectedSection = .pomodoro
-                    }
-                } content: {
-                    if state.isStopwatchActive {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            homeMiniMetric(
-                                eyebrow: state.taskTitle.isEmpty ? "自由累计" : state.taskTitle,
-                                value: homeStopwatchText(state.stopwatchElapsed(at: context.date)),
-                                footnote: state.stopwatchRunning ? "正在累计" : "已暂停"
-                            )
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("还没有开始累计")
-                                .font(AppType.ui(13))
-                                .foregroundStyle(.secondary)
-                            Text("停止正计时后，实际用时记入今天的记录")
-                                .font(AppType.caption())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                Text(String(format: "本周 %.1f / %d 小时", homeWeekFocusSeconds / 3600, goalHours))
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
             }
-            .frame(maxHeight: 210)
-
-            HStack(alignment: .top, spacing: 14) {
-                homeTodayRingCard
-                homeStreakCard
-                homeTimeSlotCard
-                homeWeekTotalCard
-            }
-            .frame(height: 192)
-
-            homeTrendCard
+            .frame(width: 260, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .top)
+        .padding(Space.xl)
+        .cardSurface(cornerRadius: Radius.board, borderOpacity: 0.12, shadowRadius: 16, shadowY: 5)
+    }
+
+    private var homeSignalDeck: some View {
+        let todaySeconds = homeTodayFocusSeconds
+        let weekHours = homeWeekFocusSeconds / 3600
+        let goalHours = max(1, store.pomodoro.weeklyFocusGoalMinutes / 60)
+        let topSlot = timeSlotBreakdown.max { $0.minutes < $1.minutes }
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("工作读数", systemImage: "waveform.path.ecg")
+                    .font(AppType.ui(Typo.footnote, .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("本周")
+                    .font(AppType.caption(10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, Space.m)
+
+            Divider()
+
+            homeSignalRow(
+                label: "今日专注",
+                value: homeFocusDurationText(todaySeconds),
+                detail: todayTaskBreakdown.prefix(2).map(\.title).joined(separator: " · ").isEmpty
+                    ? "尚未记录专注"
+                    : todayTaskBreakdown.prefix(2).map(\.title).joined(separator: " · "),
+                color: DataGradient.base(0)
+            )
+
+            Divider()
+
+            homeSignalRow(
+                label: "连续专注",
+                value: "\(streakDays) 天",
+                detail: streakDays > 0 ? "今天也在延续" : "从一次专注开始",
+                color: DataGradient.base(1)
+            )
+
+            Divider()
+
+            homeSignalRow(
+                label: "本周累计",
+                value: String(format: "%.1f 小时", weekHours),
+                detail: String(format: "目标 %d 小时", goalHours),
+                color: DataGradient.base(2),
+                progress: CGFloat(min(1, homeWeekFocusSeconds / max(1, Double(goalHours * 3600))))
+            )
+
+            Divider()
+
+            homeSignalRow(
+                label: "高效时段",
+                value: topSlot?.label ?? "--",
+                detail: topSlot.map { homeFocusDurationText($0.minutes * 60) } ?? "近 7 天暂无数据",
+                color: DataGradient.base(3)
+            )
+        }
+        .padding(Space.l)
+        .cardSurface(cornerRadius: Radius.board, borderOpacity: 0.08, shadowRadius: 12, shadowY: 4)
+    }
+
+    private func homeSignalRow(
+        label: String,
+        value: String,
+        detail: String,
+        color: Color,
+        progress: CGFloat? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(color)
+                    .frame(width: 3, height: 15)
+                Text(label)
+                    .font(AppType.caption(11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(value)
+                    .font(AppType.ui(15, .medium))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            Text(detail)
+                .font(AppType.caption(10.5))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if let progress {
+                TimeSlotProgressBar(progress: progress, color: color, height: 4, showsKnob: false)
+                    .padding(.top, 1)
+            }
+        }
+        .padding(.vertical, Space.m)
     }
 
     private var homeCalendarBoard: some View {
@@ -1200,6 +1351,26 @@ struct ContentView: View {
             guard record.endedAt > start, record.startedAt < end else { return total }
             return total + record.actualDuration
         }
+    }
+
+    private var homeTodayFocusSeconds: Double {
+        let start = beijingCalendar.startOfDay(for: Date())
+        let end = beijingCalendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
+        return store.pomodoroHistory.reduce(0) { total, record in
+            guard record.phase == .focus, record.actualDuration > 0 else { return total }
+            guard record.endedAt > start, record.startedAt < end else { return total }
+            return total + record.actualDuration
+        }
+    }
+
+    private func homeFocusDurationText(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        if hours > 0 {
+            return minutes > 0 ? "\(hours)小时 \(minutes)分" : "\(hours)小时"
+        }
+        return "\(minutes)分钟"
     }
 
     private func homeRemaining(_ remaining: TimeInterval) -> String {
