@@ -268,9 +268,6 @@ struct PomodoroView: View {
                 endPoint: .center
             )
         )
-        .background {
-            StarField(density: 26)
-        }
         .sheet(item: $editingRecord) { record in
             PomodoroHistoryEditSheet(
                 record: record,
@@ -379,42 +376,6 @@ struct PomodoroView: View {
             infoPanel
                 .frame(width: 272)
         }
-        .background {
-            StarField(density: 44)
-        }
-        .background(alignment: .top) {
-            TimelineView(.animation(minimumInterval: reduceMotion ? 10 : 0.2)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                let breath = 0.7 + 0.3 * sin(t * 0.7)
-                Circle()
-                    .fill(
-                        (timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                            .opacity(colorScheme == .dark ? 0.14 : 0.11)
-                    )
-                    .frame(width: 380, height: 380)
-                    .blur(radius: 110)
-                    .scaleEffect(CGFloat(breath))
-                    .opacity(0.35 + 0.65 * CGFloat(breath))
-                    .offset(y: -180)
-                    .allowsHitTesting(false)
-            }
-        }
-        .background(alignment: .bottomTrailing) {
-            TimelineView(.animation(minimumInterval: reduceMotion ? 10 : 0.2)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                let breath = 0.75 + 0.25 * sin(t * 0.5 + 2)
-                Circle()
-                    .fill(
-                        (timerMode == .stopwatch ? stopwatchColor : phaseColor)
-                            .opacity(colorScheme == .dark ? 0.10 : 0.07)
-                    )
-                    .frame(width: 300, height: 300)
-                    .blur(radius: 100)
-                    .scaleEffect(CGFloat(breath))
-                    .offset(x: 100, y: 100)
-                    .allowsHitTesting(false)
-            }
-        }
         .cardSurface(
             cornerRadius: Radius.board,
             borderOpacity: 0.08,
@@ -462,6 +423,7 @@ struct PomodoroView: View {
                 }
                 .buttonStyle(TimeSlotPressableStyle())
                 .help("管理任务")
+                .accessibilityLabel("管理任务")
             }
 
             Picker(
@@ -543,6 +505,7 @@ struct PomodoroView: View {
                 }
                 .buttonStyle(TimeSlotPressableStyle())
                 .help("调整完整设置")
+                .accessibilityLabel("调整完整设置")
             }
 
             Text("\(state.focusMinutes) 分专注 · \(state.shortBreakMinutes) 分短休 · 每 \(state.roundsBeforeLongBreak) 轮 \(state.longBreakMinutes) 分长休")

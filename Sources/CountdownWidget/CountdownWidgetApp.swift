@@ -577,48 +577,6 @@ struct ContentView: View {
                 .scrollIndicators(.hidden)
 
                 Spacer(minLength: 10)
-
-                VStack(alignment: .leading, spacing: Space.m) {
-                    HStack {
-                        Label("桌面小组件", systemImage: "macwindow.on.rectangle")
-                            .font(AppType.ui(Typo.footnote, .medium))
-                            .tracking(Tracking.label)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            showingWidgetHelp = true
-                        } label: {
-                            Text("1:1 预览")
-                                .font(AppType.caption(11, weight: .medium))
-                                .foregroundStyle(.primary.opacity(0.72))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Text("独立倒计时组件沿用当前固定目标；如果要让多个组件显示不同目标，请添加“时隙 · 自定义”。")
-                        .font(AppType.ui(Typo.footnote))
-                        .lineSpacing(2.5)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    widgetModePicker
-                    Button {
-                        guard let item = store.selectedItem else { return }
-                        pinToDesktop(item)
-                    } label: {
-                        Label("更新小组件内容", systemImage: "rectangle.3.group")
-                            .font(AppType.ui(12.5, .medium))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 7)
-                            .foregroundStyle(.primary.opacity(0.78))
-                    }
-                    .buttonStyle(TimeSlotPressableStyle())
-                    .inkPill()
-                    .disabled(store.selectedItem == nil)
-                    .accessibilityIdentifier("timeslot.widget.sync")
-                }
-                .padding(Space.l)
-                .cardSurface()
-                .padding(.horizontal, Space.m)
-                .padding(.bottom, Space.l)
             } else if selectedSection == .pomodoro {
                 pomodoroSidebar
             } else {
@@ -739,33 +697,6 @@ struct ContentView: View {
             .padding(.top, Space.l)
 
             Spacer()
-
-            VStack(alignment: .leading, spacing: Space.m) {
-                Label("桌面小组件", systemImage: "macwindow.on.rectangle")
-                    .font(AppType.ui(Typo.footnote, .medium))
-                    .tracking(Tracking.label)
-                    .foregroundStyle(.secondary)
-                Text("可单独添加正计时、番茄钟，或查看本周专注目标。")
-                    .font(AppType.ui(Typo.footnote))
-                    .lineSpacing(2)
-                    .foregroundStyle(.secondary)
-                widgetModePicker
-                Button {
-                    syncPomodoroToDesktop()
-                } label: {
-                    Label("更新小组件内容", systemImage: "rectangle.3.group")
-                        .font(AppType.ui(12.5, .medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .foregroundStyle(.primary.opacity(0.78))
-                }
-                .buttonStyle(TimeSlotPressableStyle())
-                .inkPill()
-            }
-            .padding(Space.l)
-            .cardSurface()
-            .padding(.horizontal, Space.m)
-            .padding(.bottom, Space.l)
         }
     }
 
@@ -1388,13 +1319,6 @@ struct ContentView: View {
                                 ) {
                                     store.togglePause(selected)
                                 }
-                                QuickActionButton(
-                                    title: "1:1 桌面小组件预览",
-                                    icon: "macwindow.on.rectangle",
-                                    tint: accent
-                                ) {
-                                    showingWidgetHelp = true
-                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1476,73 +1400,6 @@ struct ContentView: View {
             }
             .padding(.vertical, Space.s)
         }
-    }
-
-    /// 两个侧栏卡片共用：直接切小组件显示什么及时间单位
-    private var widgetModePicker: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: Space.s) {
-                Label("内容", systemImage: "rectangle.split.2x1")
-                    .font(AppType.ui(Typo.footnote, .medium))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: Space.s)
-                Picker("显示内容", selection: widgetDisplayModeSelection) {
-                    ForEach(WidgetDisplayMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 82)
-            }
-            .padding(.vertical, 9)
-
-            Divider()
-
-            HStack(spacing: Space.s) {
-                Label("单位", systemImage: "textformat.123")
-                    .font(AppType.ui(Typo.footnote, .medium))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: Space.s)
-                Picker("倒计时单位", selection: widgetTimeUnitSelection) {
-                    Text("仅天数").tag("days")
-                    Text("自动").tag("auto")
-                    Text("仅小时").tag("hours")
-                    Text("精细").tag("precise")
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 82)
-            }
-            .padding(.vertical, 9)
-        }
-        .padding(.horizontal, Space.m)
-        .background(Surface.nested)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-    }
-
-    private var widgetDisplayModeSelection: Binding<WidgetDisplayMode> {
-        Binding(
-            get: { store.widgetDisplayMode },
-            set: { newValue in
-                guard newValue != store.widgetDisplayMode else { return }
-                DispatchQueue.main.async {
-                    store.widgetDisplayMode = newValue
-                }
-            }
-        )
-    }
-
-    private var widgetTimeUnitSelection: Binding<String> {
-        Binding(
-            get: { store.widgetTimeUnit },
-            set: { newValue in
-                guard newValue != store.widgetTimeUnit else { return }
-                DispatchQueue.main.async {
-                    store.widgetTimeUnit = newValue
-                }
-            }
-        )
     }
 
     private func pinToDesktop(_ item: CountdownItem) {

@@ -149,49 +149,19 @@ struct SidebarSurface: View {
     }
 }
 
-/// 主画布：按当前颜色主题染色，首页和其他页共用同一块底。
+/// 主画布：纯色底 + 一条静态顶光。未来感来自留白与层次，不靠装饰。
 struct FrostedCanvas: View {
     var theme: ColorPreset = .graphite
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let wash = theme.wash(isDark: colorScheme == .dark)
-        ZStack {
-            LinearGradient(
-                colors: colorScheme == .dark
-                    ? [Color(hex: theme.canvasDark[0]), Color(hex: theme.canvasDark[1]), Color(hex: theme.canvasDark[2])]
-                    : [Color(hex: theme.canvasLight[0]), Color(hex: theme.canvasLight[1]), Color(hex: theme.canvasLight[2])],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(wash.opacity(colorScheme == .dark ? 0.22 : 0.42))
-                .frame(width: 640, height: 640)
-                .blur(radius: 140)
-                .offset(x: -200, y: -280)
-
-            Circle()
-                .fill(theme.color.opacity(colorScheme == .dark ? 0.10 : 0.16))
-                .frame(width: 420, height: 420)
-                .blur(radius: 120)
-                .offset(x: 340, y: 280)
-
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            theme.color.opacity(colorScheme == .dark ? 0.12 : 0.10),
-                            BrandPalette.gold.opacity(colorScheme == .dark ? 0.05 : 0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 380, height: 380)
-                .blur(radius: 130)
-                .offset(x: 40, y: -340)
-        }
+        LinearGradient(
+            colors: colorScheme == .dark
+                ? [Color(hex: theme.canvasDark[1]), Color(hex: theme.canvasDark[0])]
+                : [Color(hex: theme.canvasLight[1]), Color(hex: theme.canvasLight[0])],
+            startPoint: .top,
+            endPoint: .bottom
+        )
         .ignoresSafeArea()
     }
 }
@@ -233,8 +203,7 @@ enum AppType {
     }
 }
 
-/// 内嵌卡片表面：比磨砂看板更实一层，保证叠层可读。
-/// 浅色用较高不透明度白纸感，深色用低透玻璃感，始终与磨砂外层拉开层级。
+/// 内嵌卡片表面：单层纯色 + 细边框，与看板靠明度差分层。
 struct CardSurface: ViewModifier {
     var cornerRadius: CGFloat = Radius.medium
     var borderOpacity: Double = 0.10
@@ -246,30 +215,13 @@ struct CardSurface: ViewModifier {
         content
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(colorScheme == .dark ? 0.09 : 0.62))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(colorScheme == .dark ? 0.05 : 0.20),
-                                        Color.clear
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.78))
             }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        Color.primary.opacity(colorScheme == .dark ? borderOpacity + 0.08 : borderOpacity),
-                        lineWidth: 1
-                    )
+                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.09 : 0.06), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.10 : 0.055), radius: shadowRadius, x: 0, y: shadowY)
     }
 }
 
@@ -280,14 +232,9 @@ struct NestedSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42),
+                Color.primary.opacity(colorScheme == .dark ? 0.055 : 0.04),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.06), lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
@@ -343,32 +290,19 @@ struct GlassBoard: ViewModifier {
         content
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.045) : Color.white.opacity(0.66))
                     .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(Color.white.opacity(colorScheme == .dark ? 0.05 : 0.52))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(wash.opacity(colorScheme == .dark ? 0.10 : 0.14))
+                        if wash != .clear {
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .fill(wash.opacity(colorScheme == .dark ? 0.07 : 0.08))
+                        }
                     }
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(colorScheme == .dark ? 0.16 : 0.86),
-                                wash.opacity(colorScheme == .dark ? 0.22 : 0.28)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
+                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.07), lineWidth: 1)
             }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(color: wash.opacity(colorScheme == .dark ? 0.18 : 0.10), radius: 20, y: 8)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.05), radius: 14, y: 5)
     }
 }
 
@@ -433,7 +367,7 @@ enum ColorPreset: String, Codable, CaseIterable, Identifiable {
 
     var canvasLight: [String] { ["#F4F4F6", "#F7F7F8", "#EEEEF0"] }
 
-    var canvasDark: [String] { ["#161618", "#1B1B1E", "#141416"] }
+    var canvasDark: [String] { ["#0D0D10", "#121215", "#0F0F12"] }
 
     func wash(isDark: Bool) -> Color {
         Color(hex: isDark ? canvasDark[1] : canvasLight[0])
@@ -915,6 +849,18 @@ struct TimeSlotGlowMeter: View {
                     .fill(color.opacity(0.10))
                     .frame(height: 10)
 
+                // 25% 间隔的仪器刻度点
+                HStack {
+                    ForEach(0..<5) { index in
+                        Circle()
+                            .fill(Color.primary.opacity(index == 0 ? 0 : 0.22))
+                            .frame(width: 3, height: 3)
+                        if index < 4 { Spacer(minLength: 0) }
+                    }
+                }
+                .padding(.horizontal, 2)
+                .allowsHitTesting(false)
+
                 Capsule()
                     .fill(
                         LinearGradient(
@@ -950,13 +896,14 @@ struct TimeSlotGlowMeter: View {
             .animation(reduceMotion ? nil : .linear(duration: 0.12), value: progress)
 
             // 状态
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Circle()
                     .fill(isRunning ? color : Color.secondary.opacity(0.4))
                     .frame(width: 7, height: 7)
                     .shadow(color: isRunning ? color.opacity(0.6) : .clear, radius: 4)
-                Text(isRunning ? "正在计时" : "已暂停")
-                    .font(AppType.caption(12, weight: .medium))
+                Text(isRunning ? "RUNNING" : "STANDBY")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .tracking(1.6)
                     .foregroundStyle(.secondary)
             }
         }

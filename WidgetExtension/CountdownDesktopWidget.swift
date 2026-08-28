@@ -19,7 +19,13 @@ private let sharedItemsKey = "countdownItems"
 private let sharedPomodoroKey = "pomodoroState"
 private let sharedPomodoroHistoryKey = "pomodoroHistory"
 private let widgetDisplayModeKey = "widgetDisplayMode"
-private let stopwatchWidgetAccentHex = "#2C8C7C"
+// 石墨灰主题（与主应用 ColorPreset.graphite 一致），金色仅保留给品牌楔形。
+private let widgetAccentLightHex = "#5C5C66"
+private let widgetAccentDarkHex = "#A8A8B0"
+private let widgetBreakLightHex = "#6B6B74"
+private let widgetBreakDarkHex = "#8E8E96"
+private let widgetLongBreakLightHex = "#4F4F58"
+private let widgetLongBreakDarkHex = "#7A7A82"
 private let widgetBrandInkHex = "#0A1926"
 private let widgetBrandDeepTealHex = "#103D3B"
 private let widgetBrandTealHex = "#35B79F"
@@ -165,25 +171,10 @@ private struct WidgetBackdrop: View {
             Color(nsColor: .windowBackgroundColor)
 
             LinearGradient(
-                colors: [accent.opacity(0.12), accent.opacity(0.025), .clear],
+                colors: [accent.opacity(0.10), accent.opacity(0.02), .clear],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-
-            if family != .systemSmall {
-                VStack(alignment: .trailing, spacing: 7) {
-                    Capsule()
-                        .fill(Color(hex: widgetBrandMintHex).opacity(0.11))
-                        .frame(width: 74, height: 6)
-                        .offset(x: -18)
-                    Capsule()
-                        .fill(Color(hex: widgetBrandGoldHex).opacity(0.10))
-                        .frame(width: 74, height: 6)
-                }
-                .rotationEffect(.degrees(-10))
-                .offset(x: 22, y: 8)
-                .accessibilityHidden(true)
-            }
         }
     }
 }
@@ -948,21 +939,28 @@ struct CountdownDesktopWidgetView: View {
 
     private func accentFor(_ snap: CountdownEntryFactory.Snapshot) -> Color {
         if entry.displayMode == "stopwatch" || entry.displayMode == "weekly" {
-            return adaptiveAccent(stopwatchWidgetAccentHex)
+            return adaptiveAccent(widgetAccentLightHex)
         }
         if (entry.displayMode == "pomodoro" || entry.displayMode == "both"), let pomodoro = snap.pomodoro {
-            return adaptiveAccent(
-                pomodoro.isStopwatchActive ? stopwatchWidgetAccentHex : pomodoro.phase.colorHex
-            )
+            return adaptiveAccent(graphiteHex(for: pomodoro.phase))
         }
-        if let item = snap.item {
-            return adaptiveAccent(item.colorHex)
+        if snap.item != nil {
+            return adaptiveAccent(widgetAccentLightHex)
         }
-        return adaptiveAccent(stopwatchWidgetAccentHex)
+        return adaptiveAccent(widgetAccentLightHex)
     }
 
     /// 保存数据使用稳定的 sRGB 色值；渲染时只在深色桌面上轻微提亮，
     /// 避免青绿、靛蓝等颜色在深色墙纸上失去对比度。
+    /// 番茄钟阶段色跟随石墨灰主题：专注/短休/长休同族灰档。
+    private func graphiteHex(for phase: SharedPomodoroPhase) -> String {
+        switch phase {
+        case .focus: return widgetAccentLightHex
+        case .shortBreak: return widgetBreakLightHex
+        case .longBreak: return widgetLongBreakLightHex
+        }
+    }
+
     private func adaptiveAccent(_ hex: String) -> Color {
         let components = WidgetColorHex.components(from: hex)
             ?? WidgetColorHex.components(from: WidgetColorHex.fallback)
@@ -988,7 +986,7 @@ struct CountdownDesktopWidgetView: View {
 
     private func countdownContent(_ item: SharedCountdownItem, date: Date) -> some View {
         let remaining = item.remaining(at: date)
-        let accent = adaptiveAccent(item.colorHex)
+        let accent = adaptiveAccent(widgetAccentLightHex)
 
         return VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 12) {
             HStack {
@@ -1044,7 +1042,7 @@ struct CountdownDesktopWidgetView: View {
     }
 
     private func stopwatchContent(_ state: SharedPomodoroState, date: Date) -> some View {
-        let accent = adaptiveAccent(stopwatchWidgetAccentHex)
+        let accent = adaptiveAccent(widgetAccentLightHex)
         let elapsed = state.stopwatchElapsed(at: date)
 
         return VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 10) {
@@ -1109,7 +1107,7 @@ struct CountdownDesktopWidgetView: View {
 
     private func countdownPomodoroContent(_ state: SharedPomodoroState, date: Date) -> some View {
         let remaining = state.remaining(at: date)
-        let accent = adaptiveAccent(state.phase.colorHex)
+        let accent = adaptiveAccent(graphiteHex(for: state.phase))
         let phaseDuration = max(1, state.duration(for: state.phase))
         let phaseProgress = min(1, max(0, state.elapsed(at: date) / phaseDuration))
 
@@ -1186,7 +1184,7 @@ struct CountdownDesktopWidgetView: View {
         let goalMinutes = max(1, state?.weeklyFocusGoalMinutes ?? 10 * 60)
         let completedMinutes = weeklyFocusDuration(state: state, history: history, at: date) / 60
         let progress = min(1, max(0, completedMinutes / Double(goalMinutes)))
-        let accent = adaptiveAccent(stopwatchWidgetAccentHex)
+        let accent = adaptiveAccent(widgetAccentLightHex)
 
         VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 12) {
             HStack(spacing: 6) {
@@ -1237,7 +1235,7 @@ struct CountdownDesktopWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundStyle(adaptiveAccent(stopwatchWidgetAccentHex))
+                .foregroundStyle(adaptiveAccent(widgetAccentLightHex))
                 .widgetAccentable()
             Text(title)
                 .font(.headline.weight(.semibold))
@@ -1377,7 +1375,7 @@ struct CountdownDesktopWidgetView: View {
 
     @ViewBuilder
     private func stopwatchPane(_ state: SharedPomodoroState, compact: Bool, date: Date) -> some View {
-        let accent = adaptiveAccent(stopwatchWidgetAccentHex)
+        let accent = adaptiveAccent(widgetAccentLightHex)
         let elapsed = state.stopwatchElapsed(at: date)
 
         VStack(alignment: .leading, spacing: compact ? 3 : 6) {
@@ -1428,7 +1426,7 @@ struct CountdownDesktopWidgetView: View {
     }
 
     private func countdownPomodoroPane(_ state: SharedPomodoroState, compact: Bool, date: Date) -> some View {
-        let accent = adaptiveAccent(state.phase.colorHex)
+        let accent = adaptiveAccent(graphiteHex(for: state.phase))
         let remaining = state.remaining(at: date)
         let phaseDuration = max(1, state.duration(for: state.phase))
         let phaseProgress = min(1, max(0, state.elapsed(at: date) / phaseDuration))
@@ -1483,7 +1481,7 @@ struct CountdownDesktopWidgetView: View {
     @ViewBuilder
     private func countdownPane(_ item: SharedCountdownItem?, compact: Bool, date: Date) -> some View {
         if let item {
-            let accent = adaptiveAccent(item.colorHex)
+            let accent = adaptiveAccent(widgetAccentLightHex)
             let remaining = item.remaining(at: date)
             VStack(alignment: .leading, spacing: compact ? 3 : 6) {
                 HStack(spacing: 4) {
@@ -1547,7 +1545,7 @@ struct CountdownDesktopWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "timer")
                 .font(.title2)
-                .foregroundStyle(adaptiveAccent(stopwatchWidgetAccentHex))
+                .foregroundStyle(adaptiveAccent(widgetAccentLightHex))
                 .widgetAccentable()
             Text("还没有计时内容")
                 .font(.headline.weight(.semibold))
@@ -1584,7 +1582,7 @@ struct CountdownDesktopWidgetView: View {
         .font(.system(size: fontSize, weight: .semibold, design: .rounded))
         .monospacedDigit()
         .tracking(0.3)
-        .foregroundStyle(adaptiveAccent(item.colorHex))
+        .foregroundStyle(adaptiveAccent(widgetAccentLightHex))
         .lineLimit(1)
         .minimumScaleFactor(minimumScaleFactor)
         .widgetAccentable()
