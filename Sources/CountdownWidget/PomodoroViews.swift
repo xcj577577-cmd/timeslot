@@ -967,13 +967,7 @@ struct PomodoroView: View {
                         let hex = store.pomodoroTasks.first {
                             PomodoroTaskPalette.normalized($0.title) == title
                         }?.colorHex ?? PomodoroTaskPalette.fallbackColorHex(for: title)
-                        if colorScheme == .dark {
-                            let base = NSColor(hex: hex)
-                            return Color(
-                                nsColor: base.blended(withFraction: 0.32, of: NSColor.white) ?? base
-                            )
-                        }
-                        return Color(hex: hex)
+                        return DataSignal.color(hex: hex, isDark: colorScheme == .dark)
                     }
                 )
                 .chartLegend(position: .bottom, alignment: .leading, spacing: Space.m)
@@ -1371,7 +1365,9 @@ struct PomodoroHistoryRow: View {
         self.taskColor = taskColor
     }
 
-    private var color: Color { Color(hex: record.phase.colorHex) }
+    private var color: Color {
+        DataSignal.color(hex: record.phase.colorHex, isDark: colorScheme == .dark)
+    }
 
     var body: some View {
         HStack(spacing: Space.m) {
@@ -1439,6 +1435,7 @@ struct PomodoroTasksView: View {
     let onDelete: (PomodoroTask) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var newTaskTitle = ""
 
     var body: some View {
@@ -1498,9 +1495,12 @@ struct PomodoroTasksView: View {
     private func taskRow(_ task: PomodoroTask) -> some View {
         let isSelected = task.title == selectedTitle
         // 这里的颜色和统计里是同一套，方便对照图表上的分段是哪个任务。
-        let taskColor = Color(hex: task.colorHex.isEmpty
-            ? PomodoroTaskPalette.fallbackColorHex(for: task.title)
-            : task.colorHex)
+        let taskColor = DataSignal.color(
+            hex: task.colorHex.isEmpty
+                ? PomodoroTaskPalette.fallbackColorHex(for: task.title)
+                : task.colorHex,
+            isDark: colorScheme == .dark
+        )
         return HStack(spacing: Space.m) {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(isSelected ? taskColor : .secondary)
@@ -1539,6 +1539,7 @@ struct PomodoroTasksView: View {
             }
             .buttonStyle(.borderless)
             .disabled(tasks.count <= 1 || (isSelected && !canSwitch))
+            .accessibilityLabel("删除任务：\(task.title)")
             .help(tasks.count <= 1 ? "至少保留一个任务" : "删除任务")
         }
         .padding(.horizontal, Space.l)

@@ -73,6 +73,7 @@ struct AppSettingsPage: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.primary.opacity(0.72))
+                            .accessibilityLabel("试听当前提示音")
                             .help("试听当前提示音")
                         }
                         .padding(.vertical, 4)

@@ -334,6 +334,11 @@ extension TimeSlotCoreTests {
         XCTAssertEqual(rgba.alpha, 128.0 / 255.0, accuracy: 0.0001)
     }
 
+    func testDataSignalMapsLegacyColorsWithoutChangingUnknownValues() {
+        XCTAssertEqual(DataSignal.presentationHex(for: "#2c8c7c"), "#55A99C")
+        XCTAssertEqual(DataSignal.presentationHex(for: "#123456"), "#123456")
+    }
+
     func testCountdownItemNormalizesUntrustedFields() {
         let longTitle = "  " + String(repeating: "时", count: 100) + "  "
         let item = CountdownItem(

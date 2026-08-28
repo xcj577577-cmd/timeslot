@@ -1465,7 +1465,7 @@ struct CountdownRoadmapTimelineView: View {
             result.append(RoadmapGroup(title: "本月到期", icon: "calendar.badge.clock", color: accent, items: thisMonth))
         }
         if !later.isEmpty {
-            result.append(RoadmapGroup(title: "未来更长时间", icon: "star.fill", color: Color(hex: "#5A78B8"), items: later))
+            result.append(RoadmapGroup(title: "未来更长时间", icon: "star.fill", color: DataGradient.base(4), items: later))
         }
         if !completed.isEmpty {
             result.append(RoadmapGroup(title: "已到达目标", icon: "checkmark.circle.fill", color: .green, items: completed))
@@ -1537,7 +1537,11 @@ private struct RoadmapItemRow: View {
     let onEdit: () -> Void
     let onTogglePause: () -> Void
 
-    private var itemColor: Color { Color(hex: item.colorHex) }
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var itemColor: Color {
+        DataSignal.color(hex: item.colorHex, isDark: colorScheme == .dark)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: Space.m) {
@@ -1592,6 +1596,7 @@ private struct RoadmapItemRow: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.mini)
+                        .accessibilityLabel(item.isPaused ? "继续倒计时" : "暂停倒计时")
                         .help(item.isPaused ? "继续" : "暂停")
 
                         Button {
@@ -1603,6 +1608,7 @@ private struct RoadmapItemRow: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.mini)
+                        .accessibilityLabel("编辑倒计时")
                         .help("编辑")
 
                         Button("查看详情") {
@@ -1935,6 +1941,7 @@ private struct WidgetGuideSheet: View {
 private struct InteractiveWidgetSimulatorView: View {
     @ObservedObject var store: CountdownStore
     @State private var simulatorSize: WidgetSimulatorSize = .medium
+    @Environment(\.colorScheme) private var colorScheme
 
     private enum WidgetSimulatorSize: String, CaseIterable, Identifiable {
         case small = "小号 (170×170)"
@@ -1958,27 +1965,18 @@ private struct InteractiveWidgetSimulatorView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, Space.xl)
 
-            // 桌面壁纸背景模拟槽
+            // 预览只模拟桌面层级，避免另一套装饰性壁纸语言抢走组件本身。
             ZStack {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: "#1E293B"), Color(hex: "#0F172A")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: Radius.large, style: .continuous)
+                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.07))
                     .frame(maxWidth: .infinity, minHeight: 240)
-                    .overlay {
-                        // 柔光微光
-                        Circle()
-                            .fill((activeItem.map { Color(hex: $0.colorHex) } ?? store.accentPreset.color).opacity(0.18))
-                            .frame(width: 180, height: 180)
-                            .blur(radius: 40)
-                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.large, style: .continuous)
+                            .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.10), lineWidth: 1)
+                    )
 
                 renderedSimulatorWidget
-                    .shadow(color: Color.black.opacity(0.35), radius: 18, y: 8)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.26 : 0.16), radius: 14, y: 6)
             }
             .padding(.horizontal, Space.xl)
 
@@ -1992,7 +1990,9 @@ private struct InteractiveWidgetSimulatorView: View {
     @ViewBuilder
     private var renderedSimulatorWidget: some View {
         let item = activeItem
-        let accent = item.map { Color(hex: $0.colorHex) } ?? store.accentPreset.color
+        let accent = item.map {
+            DataSignal.color(hex: $0.colorHex, isDark: colorScheme == .dark)
+        } ?? store.accentPreset.color
         let title = item?.title ?? "重要时刻"
 
         switch simulatorSize {
@@ -2571,18 +2571,19 @@ struct CountdownEditor: View {
     let mode: Mode
     let onSave: (String, Date, String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var title: String
     @State private var targetDate: Date
     @State private var colorHex: String
     @FocusState private var titleFocused: Bool
 
     private let colorOptions: [(name: String, hex: String)] = [
-        ("青绿", "#2C8C7C"),
-        ("珊瑚", "#D86F52"),
-        ("靛蓝", "#5A78B8"),
-        ("琥珀", "#B07A3A"),
-        ("紫罗兰", "#7B5EA7"),
-        ("森林", "#4C9A5A")
+        ("青绿", "#55A99C"),
+        ("珊瑚", "#C07862"),
+        ("金色", "#C7A35A"),
+        ("苔绿", "#879C87"),
+        ("紫灰", "#8B83A6"),
+        ("玫瑰灰", "#B47D89")
     ]
 
     init(mode: Mode, onSave: @escaping (String, Date, String) -> Void) {
@@ -2592,7 +2593,7 @@ struct CountdownEditor: View {
         case .add:
             _title = State(initialValue: "")
             _targetDate = State(initialValue: beijingCalendar.date(byAdding: .hour, value: 1, to: Date()) ?? Date().addingTimeInterval(3600))
-            _colorHex = State(initialValue: "#2C8C7C")
+            _colorHex = State(initialValue: "#55A99C")
         case .edit(let item):
             _title = State(initialValue: item.title)
             _targetDate = State(initialValue: item.targetDate)
@@ -2686,18 +2687,18 @@ struct CountdownEditor: View {
                             } label: {
                                 VStack(spacing: 6) {
                                     Circle()
-                                        .fill(Color(hex: option.hex))
+                                        .fill(DataSignal.color(hex: option.hex, isDark: colorScheme == .dark))
                                         .frame(width: 28, height: 28)
                                         .overlay {
                                             Circle()
                                                 .stroke(
-                                                    Color.primary.opacity(colorHex == option.hex ? 0.82 : 0.08),
-                                                    lineWidth: colorHex == option.hex ? 2 : 1
+                                                    Color.primary.opacity(isColorSelected(option) ? 0.82 : 0.08),
+                                                    lineWidth: isColorSelected(option) ? 2 : 1
                                                 )
-                                                .padding(colorHex == option.hex ? -4 : 0)
+                                                .padding(isColorSelected(option) ? -4 : 0)
                                         }
                                         .overlay {
-                                            if colorHex == option.hex {
+                                            if isColorSelected(option) {
                                                 Image(systemName: "checkmark")
                                                     .font(AppType.caption(10, weight: .bold))
                                                     .foregroundStyle(.white)
@@ -2711,7 +2712,7 @@ struct CountdownEditor: View {
                             }
                             .buttonStyle(TimeSlotPressableStyle())
                             .accessibilityLabel(option.name)
-                            .accessibilityValue(colorHex == option.hex ? "已选中" : "未选中")
+                            .accessibilityValue(isColorSelected(option) ? "已选中" : "未选中")
                         }
                     }
                 }
@@ -2719,7 +2720,7 @@ struct CountdownEditor: View {
                 // 实时预览卡片
                 HStack(spacing: Space.m) {
                     Circle()
-                        .fill(Color(hex: colorHex))
+                        .fill(DataSignal.color(hex: colorHex, isDark: colorScheme == .dark))
                         .frame(width: 10, height: 10)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(normalizedTitle.isEmpty ? "倒计时预览" : normalizedTitle)
@@ -2731,7 +2732,7 @@ struct CountdownEditor: View {
                     }
                     Spacer()
                     Image(systemName: "rectangle.3.group")
-                        .foregroundStyle(Color(hex: colorHex))
+                        .foregroundStyle(DataSignal.color(hex: colorHex, isDark: colorScheme == .dark))
                 }
                 .padding(Space.m)
                 .nestedSurface()
@@ -2749,7 +2750,7 @@ struct CountdownEditor: View {
                     .keyboardShortcut(.cancelAction)
                 Button(isEditing ? "保存修改" : "创建倒计时") { save() }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(hex: colorHex))
+                    .tint(DataSignal.color(hex: colorHex, isDark: colorScheme == .dark))
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
             }
@@ -2789,6 +2790,11 @@ struct CountdownEditor: View {
         guard canSave else { return }
         onSave(normalizedTitle, targetDate, colorHex)
         dismiss()
+    }
+
+    private func isColorSelected(_ option: (name: String, hex: String)) -> Bool {
+        ColorHex.normalized(colorHex).caseInsensitiveCompare(option.hex) == .orderedSame
+            || DataSignal.presentationHex(for: colorHex).caseInsensitiveCompare(option.hex) == .orderedSame
     }
 
     private var modeTitle: String {
@@ -3324,7 +3330,12 @@ private struct HomeHourTimeline: View {
             let colorHex = store.pomodoroTasks.first {
                 PomodoroTaskPalette.normalized($0.title) == title
             }?.colorHex
-            let color = Color(hex: colorHex?.isEmpty == false ? colorHex! : PomodoroTaskPalette.fallbackColorHex(for: title))
+            let color = DataSignal.color(
+                hex: colorHex?.isEmpty == false
+                    ? colorHex!
+                    : PomodoroTaskPalette.fallbackColorHex(for: title),
+                isDark: colorScheme == .dark
+            )
             while cursor < finish {
                 let day = beijingCalendar.startOfDay(for: cursor)
                 let nextDay = beijingCalendar.date(byAdding: .day, value: 1, to: day) ?? cursor.addingTimeInterval(86_400)

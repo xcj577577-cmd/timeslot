@@ -75,6 +75,49 @@ enum DataGradient {
     }
 }
 
+/// 用户数据中已经保存的识别色保持原样；渲染时统一映射到当前的低饱和信号系统。
+/// 这样历史记录、任务、倒计时和图表能保持同一颜色含义，而不用迁移或改写任何本地数据。
+enum DataSignal {
+    private static let presentationHexByStoredHex: [String: String] = [
+        "#2C8C7C": "#55A99C",
+        "#D86F52": "#C07862",
+        "#E2B84A": "#C7A35A",
+        "#B07A3A": "#A8894A",
+        "#7B5EA7": "#8B83A6",
+        "#4C9A5A": "#879C87",
+        "#C2557A": "#B47D89",
+        "#3E8FA8": "#66969D",
+        "#5A78B8": "#8B83A6"
+    ]
+
+    static func presentationHex(for storedHex: String) -> String {
+        presentationHexByStoredHex[storedHex.uppercased()] ?? storedHex
+    }
+
+    static func color(hex storedHex: String, isDark: Bool = false) -> Color {
+        let rgba = ColorHex.rgba(from: presentationHex(for: storedHex))
+            ?? ColorHex.rgba(from: ColorHex.fallback)
+            ?? (red: 0.17, green: 0.55, blue: 0.49, alpha: 1)
+        guard isDark else {
+            return Color(
+                .sRGB,
+                red: Double(rgba.red),
+                green: Double(rgba.green),
+                blue: Double(rgba.blue),
+                opacity: Double(rgba.alpha)
+            )
+        }
+        let lift: CGFloat = 0.12
+        return Color(
+            .sRGB,
+            red: Double(rgba.red + (1 - rgba.red) * lift),
+            green: Double(rgba.green + (1 - rgba.green) * lift),
+            blue: Double(rgba.blue + (1 - rgba.blue) * lift),
+            opacity: Double(rgba.alpha)
+        )
+    }
+}
+
 /// 品牌母题的几何原语：右倾的金色平行四边形。
 /// 只出现在进度条末端和圆环尖端，不改读数排版，也不另起装饰层。
 struct TimeSlotWedge: Shape {
@@ -948,14 +991,15 @@ struct ConfettiEffectView: View {
     let isActive: Bool
     @State private var pieces: [ConfettiPiece] = []
     @State private var animProgress: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let colors: [Color] = [
-        Color(hex: "#D86F52"),
-        Color(hex: "#2C8C7C"),
-        Color(hex: "#B07A3A"),
-        Color(hex: "#5A78B8"),
-        Color(hex: "#7B5EA7"),
-        Color(hex: "#E0B354")
+        DataGradient.base(0),
+        DataGradient.base(1),
+        DataGradient.base(2),
+        DataGradient.base(3),
+        DataGradient.base(4),
+        DataGradient.base(5)
     ]
 
     var body: some View {
@@ -986,11 +1030,15 @@ struct ConfettiEffectView: View {
                 if newValue {
                     generatePieces(in: proxy.size)
                     animProgress = 0
-                    withAnimation(.easeOut(duration: 2.2)) {
-                        animProgress = 1.0
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    if reduceMotion {
                         pieces = []
+                    } else {
+                        withAnimation(.easeOut(duration: 2.2)) {
+                            animProgress = 1.0
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            pieces = []
+                        }
                     }
                 } else {
                     pieces = []
