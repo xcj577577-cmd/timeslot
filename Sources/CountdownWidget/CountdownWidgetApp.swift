@@ -759,7 +759,8 @@ struct ContentView: View {
                 }
 
                 if let next {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                    // 这里的文案只显示天/小时/分钟，无需每秒触发布局。
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
                         let remaining = next.remaining(at: context.date)
                         let progress = CGFloat(min(1, max(0.02, 1 - remaining / max(1, next.totalDuration))))
 
@@ -828,35 +829,14 @@ struct ContentView: View {
                     .accessibilityLabel("打开专注")
                 }
 
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let isStopwatch = state.isStopwatchActive
-                    let isRunning = isStopwatch ? state.stopwatchRunning : state.isRunning
-                    let time = isStopwatch
-                        ? homeStopwatchText(state.stopwatchElapsed(at: context.date))
-                        : homePomodoroClock(state.remaining(at: context.date))
-                    let task = state.taskTitle.isEmpty ? "当前任务" : state.taskTitle
-
-                    VStack(alignment: .leading, spacing: Space.s) {
-                        Text(task)
-                            .font(AppType.ui(Typo.body, .medium))
-                            .lineLimit(1)
-                        Text(time)
-                            .font(AppType.timer(34))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                        Text(isRunning ? "正在计时" : (isStopwatch ? "等待继续" : "下一次专注"))
-                            .font(AppType.caption())
-                            .foregroundStyle(isRunning ? store.accentPreset.color : .secondary)
-                        TimeSlotProgressBar(
-                            progress: isStopwatch
-                                ? CGFloat((state.stopwatchElapsed(at: context.date).truncatingRemainder(dividingBy: 60)) / 60)
-                                : CGFloat(min(1, max(0, state.elapsed(at: context.date) / max(1, state.duration(for: state.phase))))),
-                            color: store.accentPreset.color,
-                            height: 6,
-                            showsKnob: false
-                        )
+                let focusIsRunning = state.isStopwatchActive ? state.stopwatchRunning : state.isRunning
+                if focusIsRunning {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        homeFocusReadout(state: state, date: context.date)
                     }
+                } else {
+                    // 暂停/等待时内容是静态快照，不要让首页继续保持秒级刷新。
+                    homeFocusReadout(state: state, date: Date())
                 }
 
                 Text(String(format: "本周 %.1f / %d 小时", homeWeekFocusSeconds / 3600, goalHours))
@@ -1066,9 +1046,11 @@ struct ContentView: View {
     }
 
     private var homeCalendarBoard: some View {
-        HomeHourTimeline(store: store) {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                selectedSection = .pomodoro
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            HomeHourTimeline(store: store, currentDate: context.date) {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                    selectedSection = .pomodoro
+                }
             }
         }
     }
@@ -1498,6 +1480,39 @@ struct ContentView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
+    private func homeFocusReadout(state: PomodoroState, date: Date) -> some View {
+        let isStopwatch = state.isStopwatchActive
+        let isRunning = isStopwatch ? state.stopwatchRunning : state.isRunning
+        let time = isStopwatch
+            ? homeStopwatchText(state.stopwatchElapsed(at: date))
+            : homePomodoroClock(state.remaining(at: date))
+        let progress = isStopwatch
+            ? CGFloat((state.stopwatchElapsed(at: date).truncatingRemainder(dividingBy: 60)) / 60)
+            : CGFloat(min(1, max(0, state.elapsed(at: date) / max(1, state.duration(for: state.phase)))))
+        let task = state.taskTitle.isEmpty ? "当前任务" : state.taskTitle
+
+        return VStack(alignment: .leading, spacing: Space.s) {
+            Text(task)
+                .font(AppType.ui(Typo.body, .medium))
+                .lineLimit(1)
+            Text(time)
+                .font(AppType.timer(34))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(isRunning ? "正在计时" : (isStopwatch ? "等待继续" : "下一次专注"))
+                .font(AppType.caption())
+                .foregroundStyle(isRunning ? store.accentPreset.color : .secondary)
+            TimeSlotProgressBar(
+                progress: progress,
+                color: store.accentPreset.color,
+                height: 6,
+                showsKnob: false,
+                animatesProgress: false
+            )
+        }
+    }
+
     @ViewBuilder
     private var detail: some View {
         Group {
@@ -1665,7 +1680,8 @@ struct ContentView: View {
                     icon: "calendar"
                 )
                 Divider().frame(height: 42)
-                TimelineView(.periodic(from: .now, by: 1)) { context in
+                // 状态只在目标到达时变化，分钟级刷新足够。
+                TimelineView(.periodic(from: .now, by: 60)) { context in
                     let isActive = item.remaining(at: context.date) > 0
                     InfoCell(
                         label: "状态",
@@ -1704,11 +1720,19 @@ struct CountdownRoadmapTimelineView: View {
     private var accent: Color { store.accentPreset.color }
 
     private struct RoadmapGroup: Identifiable {
-        let id = UUID()
+        let id: String
         let title: String
         let icon: String
         let color: Color
         let items: [CountdownItem]
+
+        init(title: String, icon: String, color: Color, items: [CountdownItem]) {
+            self.id = title
+            self.title = title
+            self.icon = icon
+            self.color = color
+            self.items = items
+        }
     }
 
     private var groups: [RoadmapGroup] {
@@ -1749,7 +1773,8 @@ struct CountdownRoadmapTimelineView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        // 分组、状态徽章和进度条都只显示到分钟；秒级刷新只会重排整个滚动区。
+        TimelineView(.periodic(from: .now, by: 60)) { context in
             ScrollView {
                 if groups.isEmpty {
                     VStack(spacing: Space.m) {
@@ -1895,17 +1920,15 @@ private struct RoadmapItemRow: View {
                     }
                 }
 
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let remaining = item.remaining(at: context.date)
-                    let total = max(1, item.totalDuration)
-                    let progress = remaining <= 0 ? 1.0 : min(1.0, max(0.02, 1.0 - remaining / total))
-                    TimeSlotProgressBar(
-                        progress: CGFloat(progress),
-                        color: itemColor,
-                        height: 5,
-                        showsKnob: false
-                    )
-                }
+                let remaining = item.remaining(at: currentDate)
+                let total = max(1, item.totalDuration)
+                let progress = remaining <= 0 ? 1.0 : min(1.0, max(0.02, 1.0 - remaining / total))
+                TimeSlotProgressBar(
+                    progress: CGFloat(progress),
+                    color: itemColor,
+                    height: 5,
+                    showsKnob: false
+                )
             }
             .padding(Space.m)
             .nestedSurface()
@@ -2250,8 +2273,10 @@ private struct InteractiveWidgetSimulatorView: View {
                             .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.10), lineWidth: 1)
                     )
 
-                renderedSimulatorWidget
-                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.26 : 0.16), radius: 14, y: 6)
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    renderedSimulatorWidget(at: context.date)
+                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.26 : 0.16), radius: 14, y: 6)
+                }
             }
             .padding(.horizontal, Space.xl)
 
@@ -2263,7 +2288,7 @@ private struct InteractiveWidgetSimulatorView: View {
     }
 
     @ViewBuilder
-    private var renderedSimulatorWidget: some View {
+    private func renderedSimulatorWidget(at date: Date) -> some View {
         let item = activeItem
         let accent = item.map {
             DataSignal.color(hex: $0.colorHex, isDark: colorScheme == .dark)
@@ -2283,12 +2308,10 @@ private struct InteractiveWidgetSimulatorView: View {
                 Text(title)
                     .font(AppType.ui(13, .semibold))
                     .lineLimit(1)
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let rem = item?.remaining(at: context.date) ?? 3600
-                    Text(rem > 0 ? "\(max(0, Int(rem / 86400))) 天" : "已到达")
-                        .font(AppType.timer(24))
-                        .foregroundStyle(accent)
-                }
+                let rem = item?.remaining(at: date) ?? 3600
+                Text(rem > 0 ? "\(max(0, Int(rem / 86400))) 天" : "已到达")
+                    .font(AppType.timer(24))
+                    .foregroundStyle(accent)
             }
             .padding(16)
             .frame(width: 155, height: 155)
@@ -2298,13 +2321,11 @@ private struct InteractiveWidgetSimulatorView: View {
         case .medium:
             HStack(spacing: 16) {
                 ZStack {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        let rem = item?.remaining(at: context.date) ?? 3600
-                        let total = max(1, item?.totalDuration ?? 3600)
-                        let prog = CGFloat(rem <= 0 ? 1.0 : min(1.0, max(0.02, 1.0 - rem / total)))
-                        TimeSlotRing(progress: prog, color: accent, lineWidth: 8, showsGlow: true)
-                    }
-                    .frame(width: 90, height: 90)
+                    let rem = item?.remaining(at: date) ?? 3600
+                    let total = max(1, item?.totalDuration ?? 3600)
+                    let prog = CGFloat(rem <= 0 ? 1.0 : min(1.0, max(0.02, 1.0 - rem / total)))
+                    TimeSlotRing(progress: prog, color: accent, lineWidth: 8, showsGlow: true)
+                        .frame(width: 90, height: 90)
 
                     Image(systemName: "timer")
                         .font(AppType.ui(24))
@@ -2318,15 +2339,13 @@ private struct InteractiveWidgetSimulatorView: View {
                             .font(AppType.ui(14, .semibold))
                             .lineLimit(1)
                     }
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        let rem = item?.remaining(at: context.date) ?? 3600
-                        let d = max(0, Int(rem / 86400))
-                        let h = (Int(rem) % 86400) / 3600
-                        Text(rem > 0 ? "\(d)天 \(h)小时" : "目标达成")
-                            .font(AppType.timer(24))
-                            .monospacedDigit()
-                            .foregroundStyle(accent)
-                    }
+                    let rem = item?.remaining(at: date) ?? 3600
+                    let d = max(0, Int(rem / 86400))
+                    let h = (Int(rem) % 86400) / 3600
+                    Text(rem > 0 ? "\(d)天 \(h)小时" : "目标达成")
+                        .font(AppType.timer(24))
+                        .monospacedDigit()
+                        .foregroundStyle(accent)
                     if let targetDate = item?.targetDate {
                         Text(beijingDateString(targetDate, dateStyle: .abbreviated, timeStyle: .shortened))
                             .font(AppType.caption())
@@ -2353,13 +2372,11 @@ private struct InteractiveWidgetSimulatorView: View {
 
                 HStack(spacing: 20) {
                     ZStack {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            let rem = item?.remaining(at: context.date) ?? 3600
-                            let total = max(1, item?.totalDuration ?? 3600)
-                            let prog = CGFloat(rem <= 0 ? 1.0 : min(1.0, max(0.02, 1.0 - rem / total)))
-                            TimeSlotRing(progress: prog, color: accent, lineWidth: 10, showsGlow: true)
-                        }
-                        .frame(width: 100, height: 100)
+                        let rem = item?.remaining(at: date) ?? 3600
+                        let total = max(1, item?.totalDuration ?? 3600)
+                        let prog = CGFloat(rem <= 0 ? 1.0 : min(1.0, max(0.02, 1.0 - rem / total)))
+                        TimeSlotRing(progress: prog, color: accent, lineWidth: 10, showsGlow: true)
+                            .frame(width: 100, height: 100)
 
                         Image(systemName: "timer")
                             .font(AppType.ui(28))
@@ -2367,16 +2384,14 @@ private struct InteractiveWidgetSimulatorView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            let rem = item?.remaining(at: context.date) ?? 3600
-                            let d = max(0, Int(rem / 86400))
-                            let h = (Int(rem) % 86400) / 3600
-                            let m = (Int(rem) % 3600) / 60
-                            Text(rem > 0 ? "\(d)天 \(h):\(String(format: "%02d", m))" : "已到达")
-                                .font(AppType.timer(26))
-                                .monospacedDigit()
-                                .foregroundStyle(accent)
-                        }
+                        let rem = item?.remaining(at: date) ?? 3600
+                        let d = max(0, Int(rem / 86400))
+                        let h = (Int(rem) % 86400) / 3600
+                        let m = (Int(rem) % 3600) / 60
+                        Text(rem > 0 ? "\(d)天 \(h):\(String(format: "%02d", m))" : "已到达")
+                            .font(AppType.timer(26))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
                         if let targetDate = item?.targetDate {
                             Text("目标：\(beijingDateString(targetDate, dateStyle: .long, timeStyle: .shortened))")
                                 .font(AppType.caption())
@@ -2456,65 +2471,19 @@ struct CountdownRow: View {
     let action: () -> Void
 
     var body: some View {
+        let initialRemaining = item.remaining(at: Date())
+        let needsLiveRefresh = !item.isPaused && initialRemaining > 0 && initialRemaining <= 86400
+
         Button(action: action) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Color.primary.opacity(isSelected ? 0.10 : 0.055))
-                        .frame(width: 26, height: 26)
-
-                    Image(systemName: item.isPaused ? "pause.fill" : (item.isPinned ? "pin.fill" : "calendar"))
-                        .font(AppType.caption(10, weight: .semibold))
-                        .foregroundStyle(Color.primary.opacity(0.72))
+            if needsLiveRefresh {
+                // 侧栏只是辅助读数，不需要为每个临近目标每秒重排一整行。
+                // 15 秒仍能保持秒数有响应，同时把多个目标同时临近时的刷新量降一个数量级。
+                TimelineView(.periodic(from: .now, by: 15)) { context in
+                    rowContent(remaining: item.remaining(at: context.date))
                 }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 4) {
-                        Text(item.title)
-                            .font(AppType.ui(13, isSelected ? .semibold : .regular))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        if item.isPinned {
-                            Image(systemName: "rectangle.3.group.fill")
-                                .font(AppType.caption(9))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    let remaining = item.remaining(at: Date())
-                    if item.isPaused || remaining > 86400 {
-                        rowProgress(remaining)
-                    } else {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            rowProgress(item.remaining(at: context.date))
-                        }
-                    }
-                }
-
-                Spacer(minLength: 4)
-
-                let remaining = item.remaining(at: Date())
-                let isUrgent = remaining > 0 && remaining < 86400 && !item.isPaused
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(remaining > 0 ? (remaining >= 86400 ? "\(max(1, Int(remaining / 86400))) 天" : formatCompact(remaining)) : "已到达")
-                        .font(AppType.caption(12, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(remaining <= 0 ? Color.secondary : (isUrgent ? Color.orange : Color.primary.opacity(0.78)))
-
-                    if isUrgent {
-                        Text("今天")
-                            .font(AppType.caption(9, weight: .semibold))
-                            .foregroundStyle(Color.orange)
-                    }
-                }
+            } else {
+                rowContent(remaining: initialRemaining)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isSelected ? Color.primary.opacity(0.06) : Color.clear)
-            )
         }
         .buttonStyle(TimeSlotPressableStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -2525,6 +2494,59 @@ struct CountdownRow: View {
         )
     }
 
+    private func rowContent(remaining: TimeInterval) -> some View {
+        let isUrgent = remaining > 0 && remaining < 86400 && !item.isPaused
+
+        return HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(Color.primary.opacity(isSelected ? 0.10 : 0.055))
+                    .frame(width: 26, height: 26)
+
+                Image(systemName: item.isPaused ? "pause.fill" : (item.isPinned ? "pin.fill" : "calendar"))
+                    .font(AppType.caption(10, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.72))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Text(item.title)
+                        .font(AppType.ui(13, isSelected ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if item.isPinned {
+                        Image(systemName: "rectangle.3.group.fill")
+                            .font(AppType.caption(9))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                rowProgress(remaining)
+            }
+
+            Spacer(minLength: 4)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(remaining > 0 ? (remaining >= 86400 ? "\(max(1, Int(remaining / 86400))) 天" : formatCompact(remaining)) : "已到达")
+                    .font(AppType.caption(12, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(remaining <= 0 ? Color.secondary : (isUrgent ? Color.orange : Color.primary.opacity(0.78)))
+
+                if isUrgent {
+                    Text("今天")
+                        .font(AppType.caption(9, weight: .semibold))
+                        .foregroundStyle(Color.orange)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? Color.primary.opacity(0.06) : Color.clear)
+        )
+    }
+
     private func rowProgress(_ remaining: TimeInterval) -> some View {
         let total = max(1, item.totalDuration)
         let prog = remaining <= 0 ? 1.0 : min(1.0, max(0.0, 1.0 - remaining / total))
@@ -2532,7 +2554,8 @@ struct CountdownRow: View {
             progress: CGFloat(prog),
             color: accent,
             height: 5,
-            showsKnob: false
+            showsKnob: false,
+            animatesProgress: false
         )
         .frame(width: 88)
     }
@@ -2561,8 +2584,10 @@ struct CountdownHero: View {
 
     @ViewBuilder
     var body: some View {
-        if item.isPaused {
-            card(remaining: item.remaining(at: Date()))
+        let remaining = item.remaining(at: Date())
+        if item.isPaused || remaining <= 0 {
+            // 已暂停或已完成的目标不会再变化，不需要保留秒级时间线。
+            card(remaining: remaining)
         } else {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 card(remaining: item.remaining(at: context.date))
@@ -2639,7 +2664,8 @@ struct CountdownHero: View {
                     color: accent,
                     height: 10,
                     showsKnob: true,
-                    showsMilestones: true
+                    showsMilestones: true,
+                    animatesProgress: false
                 )
             }
 
@@ -2700,42 +2726,51 @@ struct CountdownTimelineCard: View {
                 .tracking(Tracking.heading)
                 .foregroundStyle(.secondary)
 
+            let initialRemaining = item.remaining(at: Date())
             VStack(spacing: Space.m) {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let remaining = item.remaining(at: context.date)
-                    let total = max(1, item.totalDuration)
-                    let elapsed = max(0, total - remaining)
-                    let elapsedDays = Int(elapsed / 86400)
-                    let remainingDays = Int(ceil(remaining / 86400))
-
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("起始点")
-                                .font(AppType.caption())
-                                .foregroundStyle(.secondary)
-                            Text(beijingDateString(item.createdAt, dateStyle: .abbreviated, timeStyle: .omitted))
-                                .font(AppType.ui(Typo.footnote, .medium))
-                        }
-
-                        Spacer()
-
-                        VStack(spacing: 2) {
-                            Text("已过去 \(elapsedDays) 天 · 剩余 \(max(0, remainingDays)) 天")
-                                .font(AppType.caption(11.5, weight: .medium))
-                                .foregroundStyle(.primary.opacity(0.72))
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("目标点")
-                                .font(AppType.caption())
-                                .foregroundStyle(.secondary)
-                            Text(beijingDateString(item.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))
-                                .font(AppType.ui(Typo.footnote, .medium))
-                        }
+                // 已暂停或已完成的目标不会变化，不需要保留分钟级时间线。
+                if item.isPaused || initialRemaining <= 0 {
+                    milestoneContent(remaining: initialRemaining)
+                } else {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        milestoneContent(remaining: item.remaining(at: context.date))
                     }
                 }
+            }
+        }
+    }
+
+    private func milestoneContent(remaining: TimeInterval) -> some View {
+        let total = max(1, item.totalDuration)
+        let elapsed = max(0, total - remaining)
+        let elapsedDays = Int(elapsed / 86400)
+        let remainingDays = Int(ceil(remaining / 86400))
+
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("起始点")
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+                Text(beijingDateString(item.createdAt, dateStyle: .abbreviated, timeStyle: .omitted))
+                    .font(AppType.ui(Typo.footnote, .medium))
+            }
+
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text("已过去 \(elapsedDays) 天 · 剩余 \(max(0, remainingDays)) 天")
+                    .font(AppType.caption(11.5, weight: .medium))
+                    .foregroundStyle(.primary.opacity(0.72))
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("目标点")
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+                Text(beijingDateString(item.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))
+                    .font(AppType.ui(Typo.footnote, .medium))
             }
         }
     }
@@ -3080,8 +3115,13 @@ struct CountdownEditor: View {
     }
 }
 
+private final class TimelineInteractionState {
+    var hoverPoint = CGPoint.zero
+}
+
 private struct HomeHourTimeline: View {
     @ObservedObject var store: CountdownStore
+    let currentDate: Date
     let onOpenFocus: () -> Void
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -3091,7 +3131,8 @@ private struct HomeHourTimeline: View {
     @State private var scaleY: CGFloat = 1
     @GestureState private var drag = CGSize.zero
     @State private var hovering = false
-    @State private var hoverPoint = CGPoint.zero
+    // 指针位置只供缩放手势使用，不发布为 SwiftUI 状态，避免连续 hover 触发整张时间轴重绘。
+    @State private var interactionState = TimelineInteractionState()
     @State private var scrollMonitor: Any?
     @State private var lastPlotWidth: CGFloat = 0
     @State private var lastWorldWidth: CGFloat = 0
@@ -3124,7 +3165,7 @@ private struct HomeHourTimeline: View {
             }
 
             GeometryReader { geo in
-                let days = timelineDays()
+                let days = timelineDays(at: currentDate)
                 let livePan = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
                 let plotWidth = max(1, geo.size.width - hourGutter)
                 let scrubberHeight: CGFloat = 22
@@ -3142,6 +3183,8 @@ private struct HomeHourTimeline: View {
                 let worldWidth = CGFloat(days.count) * dayWidth
                 let worldHeight = 24 * hourHeight
                 let clamped = clampPan(livePan, plotWidth: plotWidth, plotHeight: plotHeight, worldWidth: worldWidth, worldHeight: worldHeight)
+                let blocks = timelineBlocks(days: days, at: currentDate)
+                let dailyTotals = dailyMinutes(blocks: blocks, dayCount: days.count)
 
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
@@ -3159,10 +3202,10 @@ private struct HomeHourTimeline: View {
 
                         ZStack(alignment: .topLeading) {
                             timelinePlot(days: days, dayWidth: dayWidth, hourHeight: hourHeight, hourStep: hourStep)
-                            ForEach(timelineBlocks(days: days)) { block in
+                            ForEach(blocks) { block in
                                 timelineBlockView(block, dayWidth: dayWidth, hourHeight: hourHeight)
                             }
-                            ForEach(Array(dailyMinutes(days: days).enumerated()), id: \.offset) { index, minutes in
+                            ForEach(Array(dailyTotals.enumerated()), id: \.offset) { index, minutes in
                                 if minutes >= 30 {
                                     Text(minutes >= 60 ? String(format: "%.1fh", minutes / 60) : "\(Int(minutes))m")
                                         .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -3172,7 +3215,7 @@ private struct HomeHourTimeline: View {
                                         .allowsHitTesting(false)
                                 }
                             }
-                            nowLine(days: days, dayWidth: dayWidth, hourHeight: hourHeight)
+                            nowLine(days: days, dayWidth: dayWidth, hourHeight: hourHeight, date: currentDate)
                         }
                         .frame(width: worldWidth, height: worldHeight, alignment: .topLeading)
                         .offset(clamped)
@@ -3212,7 +3255,7 @@ private struct HomeHourTimeline: View {
             .onHover { hovering = $0 }
             .onContinuousHover { phase in
                 if case .active(let point) = phase {
-                    hoverPoint = CGPoint(x: point.x - hourGutter, y: point.y - headerHeight)
+                    interactionState.hoverPoint = CGPoint(x: point.x - hourGutter, y: point.y - headerHeight)
                 }
             }
         }
@@ -3264,7 +3307,7 @@ private struct HomeHourTimeline: View {
                     fromPan: pinchStartPan,
                     factorX: value,
                     factorY: value,
-                    around: hoverPoint,
+                    around: interactionState.hoverPoint,
                     dayCount: timelineDays().count
                 )
             }
@@ -3479,8 +3522,8 @@ private struct HomeHourTimeline: View {
         .offset(x: x, y: y)
     }
 
-    private func nowLine(days: [Date], dayWidth: CGFloat, hourHeight: CGFloat) -> some View {
-        let now = Date()
+    private func nowLine(days: [Date], dayWidth: CGFloat, hourHeight: CGFloat, date: Date) -> some View {
+        let now = date
         guard let todayIndex = days.firstIndex(where: { beijingCalendar.isDate($0, inSameDayAs: now) }) else {
             return AnyView(EmptyView())
         }
@@ -3497,9 +3540,9 @@ private struct HomeHourTimeline: View {
         )
     }
 
-    private func dailyMinutes(days: [Date]) -> [Double] {
-        var totals = Array(repeating: 0.0, count: days.count)
-        for block in timelineBlocks(days: days) where !block.live {
+    private func dailyMinutes(blocks: [TimelineBlock], dayCount: Int) -> [Double] {
+        var totals = Array(repeating: 0.0, count: dayCount)
+        for block in blocks where !block.live {
             totals[block.dayIndex] += block.durationHours * 60
         }
         return totals
@@ -3517,7 +3560,7 @@ private struct HomeHourTimeline: View {
                     fromPan: pan,
                     factorX: factor,
                     factorY: factor,
-                    around: hoverPoint,
+                    around: interactionState.hoverPoint,
                     dayCount: timelineDays().count
                 )
                 return nil
@@ -3531,7 +3574,7 @@ private struct HomeHourTimeline: View {
                     fromPan: pan,
                     factorX: event.modifierFlags.contains(.shift) ? 1 : factor,
                     factorY: event.modifierFlags.contains(.shift) ? factor : 1,
-                    around: hoverPoint,
+                    around: interactionState.hoverPoint,
                     dayCount: timelineDays().count
                 )
                 return nil
@@ -3547,7 +3590,7 @@ private struct HomeHourTimeline: View {
                     fromPan: pan,
                     factorX: 1,
                     factorY: factor,
-                    around: hoverPoint,
+                    around: interactionState.hoverPoint,
                     dayCount: timelineDays().count
                 )
             }
@@ -3569,14 +3612,14 @@ private struct HomeHourTimeline: View {
         min(1, fillDayCount / CGFloat(max(dayCount, 1)))
     }
 
-    private func timelineDays() -> [Date] {
-        let today = beijingCalendar.startOfDay(for: Date())
+    private func timelineDays(at date: Date = Date()) -> [Date] {
+        let today = beijingCalendar.startOfDay(for: date)
         var starts = store.pomodoroHistory
             .filter { ($0.phase == .focus || $0.status == .stopwatch) && $0.actualDuration > 0 }
             .map { beijingCalendar.startOfDay(for: $0.startedAt) }
         if store.pomodoro.isStopwatchActive {
-            let elapsed = store.pomodoro.stopwatchElapsed(at: Date())
-            let liveStart = store.pomodoro.stopwatchSessionStartedAt ?? Date().addingTimeInterval(-elapsed)
+            let elapsed = store.pomodoro.stopwatchElapsed(at: date)
+            let liveStart = store.pomodoro.stopwatchSessionStartedAt ?? date.addingTimeInterval(-elapsed)
             starts.append(beijingCalendar.startOfDay(for: liveStart))
         }
         let oldest = starts.min() ?? (beijingCalendar.date(byAdding: .day, value: -6, to: today) ?? today)
@@ -3592,7 +3635,7 @@ private struct HomeHourTimeline: View {
         return days
     }
 
-    private func timelineBlocks(days: [Date]) -> [TimelineBlock] {
+    private func timelineBlocks(days: [Date], at date: Date = Date()) -> [TimelineBlock] {
         guard let first = days.first, let last = days.last else { return [] }
         let windowStart = first
         let windowEnd = last.addingTimeInterval(86_400)
@@ -3654,12 +3697,12 @@ private struct HomeHourTimeline: View {
         let state = store.pomodoro
         let liveTitle = PomodoroTaskPalette.normalized(state.taskTitle)
         if state.isStopwatchActive {
-            let elapsed = state.stopwatchElapsed(at: Date())
-            let start = state.stopwatchSessionStartedAt ?? Date().addingTimeInterval(-elapsed)
-            appendSpan(title: liveTitle, start: start, end: Date(), live: true, ids: [])
+            let elapsed = state.stopwatchElapsed(at: date)
+            let start = state.stopwatchSessionStartedAt ?? date.addingTimeInterval(-elapsed)
+            appendSpan(title: liveTitle, start: start, end: date, live: true, ids: [])
         } else if state.isRunning, state.phase == .focus {
-            let start = state.sessionStartedAt ?? state.activeStartedAt ?? Date()
-            appendSpan(title: liveTitle, start: start, end: Date(), live: true, ids: [])
+            let start = state.sessionStartedAt ?? state.activeStartedAt ?? date
+            appendSpan(title: liveTitle, start: start, end: date, live: true, ids: [])
         }
         return packedLanes(blocks)
     }

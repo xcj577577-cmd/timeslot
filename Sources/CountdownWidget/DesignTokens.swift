@@ -615,6 +615,8 @@ struct TimeSlotProgressBar: View {
     var height: CGFloat = 8
     var showsKnob: Bool = true
     var showsMilestones: Bool = false
+    /// 高频时间线使用直接更新，避免每秒启动一段 350ms 的动画并持续触发布局。
+    var animatesProgress: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -679,7 +681,7 @@ struct TimeSlotProgressBar: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .frame(height: showsKnob ? height + 6 : height)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: progress)
+        .animation(animatesProgress && !reduceMotion ? .easeOut(duration: 0.35) : nil, value: progress)
     }
 }
 

@@ -588,25 +588,17 @@ struct PomodoroView: View {
                 quickPresetPills
             }
 
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let isStopwatch = timerMode == .stopwatch
-                    let ink = isStopwatch ? stopwatchColor : phaseColor
-                    let isLive = isStopwatch ? state.stopwatchRunning : state.isRunning
-                    let prog = isStopwatch
-                        ? stopwatchRingProgress(at: context.date)
-                        : progress(at: context.date)
-
-                    TimeSlotGlowMeter(
-                        progress: prog,
-                        color: ink,
-                        phaseTitle: isStopwatch ? "正计时" : state.phase.title,
-                        phaseIcon: isStopwatch ? "stopwatch.fill" : state.phase.icon,
-                        timeText: isStopwatch
-                            ? stopwatchTimeText(state.stopwatchElapsed(at: context.date))
-                            : timerText(at: context.date),
-                        isRunning: isLive
-                    )
+            let timerIsRunning = timerMode == .stopwatch ? state.stopwatchRunning : state.isRunning
+            Group {
+                if timerIsRunning {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        timerMeter(at: context.date)
+                    }
+                } else {
+                    // 暂停/等待时读数不会变化，静态渲染可避免番茄钟页面空转。
+                    timerMeter(at: Date())
                 }
+            }
             .padding(.vertical, Space.m)
             .overlay {
                 ConfettiEffectView(isActive: state.phase == .focus && state.remaining(at: Date()) <= 0)
@@ -1185,6 +1177,24 @@ struct PomodoroView: View {
     private func stopwatchRingProgress(at date: Date) -> CGFloat {
         let elapsed = max(0, state.stopwatchElapsed(at: date))
         return CGFloat((elapsed.truncatingRemainder(dividingBy: 60)) / 60)
+    }
+
+    private func timerMeter(at date: Date) -> some View {
+        let isStopwatch = timerMode == .stopwatch
+        let ink = isStopwatch ? stopwatchColor : phaseColor
+        let isLive = isStopwatch ? state.stopwatchRunning : state.isRunning
+        let prog = isStopwatch ? stopwatchRingProgress(at: date) : progress(at: date)
+
+        return TimeSlotGlowMeter(
+            progress: prog,
+            color: ink,
+            phaseTitle: isStopwatch ? "正计时" : state.phase.title,
+            phaseIcon: isStopwatch ? "stopwatch.fill" : state.phase.icon,
+            timeText: isStopwatch
+                ? stopwatchTimeText(state.stopwatchElapsed(at: date))
+                : timerText(at: date),
+            isRunning: isLive
+        )
     }
 
     private var timerStatusTitle: String {

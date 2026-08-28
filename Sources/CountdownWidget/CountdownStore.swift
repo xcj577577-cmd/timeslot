@@ -7,7 +7,10 @@ import UserNotifications
 @MainActor
 final class CountdownStore: ObservableObject {
     @Published var items: [CountdownItem] {
-        didSet { save() }
+        didSet {
+            save()
+            configureTimerIfNeeded()
+        }
     }
     @Published var selectedID: UUID? {
         didSet {
@@ -15,7 +18,10 @@ final class CountdownStore: ObservableObject {
         }
     }
     @Published var pomodoro: PomodoroState {
-        didSet { savePomodoro() }
+        didSet {
+            savePomodoro()
+            configureTimerIfNeeded()
+        }
     }
     @Published var pomodoroHistory: [PomodoroSessionRecord] {
         didSet { savePomodoroHistory() }
@@ -26,14 +32,14 @@ final class CountdownStore: ObservableObject {
     @Published var widgetDisplayMode: WidgetDisplayMode {
         didSet {
             CountdownStore.saveSharedString(widgetDisplayMode.rawValue, forKey: widgetDisplayModeKey)
-            persistWidgetStateFile()
+            persistWidgetStateFile(requestReload: false)
             reloadDesktopWidgetNow()
         }
     }
     @Published var widgetTimeUnit: String {
         didSet {
             CountdownStore.saveSharedString(widgetTimeUnit, forKey: widgetTimeUnitKey)
-            persistWidgetStateFile()
+            persistWidgetStateFile(requestReload: false)
             reloadDesktopWidgetNow()
         }
     }
@@ -56,7 +62,8 @@ final class CountdownStore: ObservableObject {
     @Published private(set) var storageMigrationState: StorageMigrationState = .current
 
     private var timerCancellable: AnyCancellable?
-    private var widgetReloadTask: DispatchWorkItem?
+    private var timerInterval: TimeInterval?
+    private var widgetDelayedReloadTask: Task<Void, Never>?
     /// 共享状态文件位于 App Group 容器中，系统偶尔会在启动时短暂等待文件协调。
     /// 不能让这次 I/O 卡住主线程；串行队列同时保证多次状态变化按顺序落盘。
     private let widgetStateWriteQueue = DispatchQueue(
@@ -159,7 +166,7 @@ final class CountdownStore: ObservableObject {
         return try? JSONDecoder().decode(WidgetStateFile.self, from: data)
     }
 
-    private func persistWidgetStateFile() {
+    private func persistWidgetStateFile(requestReload: Bool = true) {
         guard let url = widgetStateURL else {
             widgetSyncState = .unavailable
             return
@@ -174,7 +181,7 @@ final class CountdownStore: ObservableObject {
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         let directory = url.deletingLastPathComponent()
-        let widgetKinds = Self.widgetKinds
+        let widgetKinds = requestReload ? Self.widgetKinds : []
         widgetStateWriteQueue.async {
             var didWrite = false
             do {
@@ -458,23 +465,7 @@ final class CountdownStore: ObservableObject {
         NSApp.appearance = appearanceMode.nsAppearance
         selectedID = storedID.flatMap { id in items.contains(where: { $0.id == id }) ? id : nil } ?? items.first?.id
 
-        timerCancellable = Timer.publish(every: 1, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                // 这个 tick 只用来判定阶段是否结束，不再每秒发布状态。
-                // 原来每秒 @Published 一次 currentDate，会让整个 ContentView（含
-                // Swift Charts 图表和历史列表）重算重排，主线程被布局吃满。
-                // 需要按秒走字的地方改用各自的 TimelineView。
-                self?.handlePomodoroTick(at: Date())
-                self?.checkCountdownCompletions(at: Date())
-                // 兜底同步：即使扩展进程的刷新请求被系统合并或错过，
-                // 应用只要开着，每 4 分钟也会主动让小组件重新读取一次状态。
-                // 原来 55 秒一次会叠加到 WidgetKit 刷新预算里，改成低频单次以降低节流概率。
-                if let self, Date().timeIntervalSince(self.lastWidgetHealthReload) >= 240 {
-                    self.lastWidgetHealthReload = Date()
-                    self.performWidgetReload()
-                }
-            }
+        configureTimerIfNeeded()
 
         persistSharedStateWithoutWidgetReload()
         savePomodoroHistory()
@@ -1046,7 +1037,7 @@ final class CountdownStore: ObservableObject {
     }
 
     func refreshDesktopWidgets() {
-        persistWidgetStateFile()
+        persistWidgetStateFile(requestReload: false)
         reloadDesktopWidgetNow()
     }
 
@@ -1261,21 +1252,59 @@ final class CountdownStore: ObservableObject {
         guard let data = try? JSONEncoder().encode(items) else { return }
         CountdownStore.saveSharedData(data, forKey: storageKey)
         persistWidgetStateFile()
-        scheduleWidgetReload()
+    }
+
+    /// Store 只在需要观察状态跃迁时运行定时器：番茄钟运行中或倒计时临近到期按秒检查，
+    /// 远期目标每分钟检查，完全空闲时停止定时器。秒级读数由各自的 TimelineView 负责。
+    private func configureTimerIfNeeded(at date: Date = Date()) {
+        let nearestCountdown = items
+            .filter { !$0.isPaused }
+            .map { $0.remaining(at: date) }
+            .filter { $0 > 0 }
+            .min()
+        let desiredInterval: TimeInterval?
+        if pomodoro.isRunning {
+            desiredInterval = 1
+        } else if let nearestCountdown {
+            desiredInterval = nearestCountdown <= 120 ? 1 : 60
+        } else {
+            desiredInterval = nil
+        }
+
+        guard desiredInterval != timerInterval else { return }
+        timerCancellable?.cancel()
+        timerCancellable = nil
+        timerInterval = desiredInterval
+        guard let desiredInterval else { return }
+
+        timerCancellable = Timer.publish(every: desiredInterval, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] date in
+                guard let self else { return }
+                // 这个 tick 只用来判定阶段是否结束，不再每秒发布状态。
+                // 秒级读数由各自的 TimelineView 负责。
+                self.handlePomodoroTick(at: date)
+                self.checkCountdownCompletions(at: date)
+                self.configureTimerIfNeeded(at: date)
+                // 兜底同步：即使扩展进程的刷新请求被系统合并或错过，
+                // 应用只要开着，每 4 分钟也会主动让小组件重新读取一次状态。
+                if date.timeIntervalSince(self.lastWidgetHealthReload) >= 240 {
+                    self.lastWidgetHealthReload = date
+                    self.performWidgetReload()
+                }
+            }
     }
 
     private func savePomodoro() {
         guard let data = try? JSONEncoder().encode(pomodoro) else { return }
         CountdownStore.saveSharedData(data, forKey: pomodoroStorageKey)
         persistWidgetStateFile()
-        scheduleWidgetReload()
     }
 
     private func savePomodoroHistory() {
         guard let data = try? JSONEncoder().encode(pomodoroHistory) else { return }
         CountdownStore.saveSharedData(data, forKey: pomodoroHistoryStorageKey)
         persistWidgetStateFile()
-        scheduleWidgetReload()
     }
 
     private func savePomodoroTasks() {
@@ -1290,30 +1319,25 @@ final class CountdownStore: ObservableObject {
         if let data = try? JSONEncoder().encode(pomodoro) {
             CountdownStore.saveSharedData(data, forKey: pomodoroStorageKey)
         }
-        persistWidgetStateFile()
-    }
-
-    private func scheduleWidgetReload() {
-        widgetReloadTask?.cancel()
-        let task = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.widgetReloadTask = nil
-            self.performWidgetReload()
-        }
-        widgetReloadTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: task)
+        persistWidgetStateFile(requestReload: false)
     }
 
     private func reloadDesktopWidgetNow() {
-        widgetReloadTask?.cancel()
-        widgetReloadTask = nil
+        widgetDelayedReloadTask?.cancel()
+        widgetDelayedReloadTask = nil
         performWidgetReload()
         // 写共享文件与扩展进程读取之间没有同步保证，补一次兜底即可。
         // 之前在此叠加 0.4s/1.5s 两次 Task，一次状态变化最多触发 4 次 × 6 kinds
         // 的 reloadTimelines，极易被 WidgetKit 预算节流合并，反而表现为“小组件不更新”。
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            self?.performWidgetReload()
+        widgetDelayedReloadTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 800_000_000)
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.widgetDelayedReloadTask = nil
+            self.performWidgetReload()
         }
     }
 
@@ -1491,14 +1515,20 @@ final class CountdownStore: ObservableObject {
     /// 倒计时归零时给一次反馈：通知权限已授予时由系统通知响铃，
     /// 未授予时用应用内提示音兜底（只对刚结束的目标响，不骚扰历史数据）。
     private func checkCountdownCompletions(at date: Date) {
+        var didCompleteCountdown = false
         for item in items where item.pausedRemaining == nil && !countdownCompletionPlayed.contains(item.id) {
             guard item.remaining(at: date) <= 0 else { continue }
             countdownCompletionPlayed.insert(item.id)
-            reloadDesktopWidgetNow()
+            didCompleteCountdown = true
             guard abs(date.timeIntervalSince(item.targetDate)) <= 30 else { continue }
             if !notificationPermissionGranted && soundsEnabled {
                 NSSound(named: "Glass")?.play()
             }
+        }
+        // 倒计时完成后更新 active/completed 筛选和详情状态；只在状态跃迁时通知一次。
+        if didCompleteCountdown {
+            reloadDesktopWidgetNow()
+            objectWillChange.send()
         }
     }
 }
