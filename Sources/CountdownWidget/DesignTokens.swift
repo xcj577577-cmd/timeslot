@@ -41,28 +41,28 @@ func beijingDateString(
 /// 避免主应用、表单和小组件出现“差不多的青绿”。
 enum BrandPalette {
     static let ink = Color(hex: "#1A1A1F")
-    static let deepTeal = Color(hex: "#1E3A36")
-    static let teal = Color(hex: "#2BB8A3")
-    static let mint = Color(hex: "#7EE0CF")
-    static let gold = Color(hex: "#E2B84A")
-    static let goldHighlight = Color(hex: "#F4E3A3")
-    static let coral = Color(hex: "#E07A3D")
-    static let indigo = Color(hex: "#5B7CDE")
+    static let deepTeal = Color(hex: "#29423E")
+    static let teal = Color(hex: "#55A99C")
+    static let mint = Color(hex: "#A0D0C5")
+    static let gold = Color(hex: "#C7A35A")
+    static let goldHighlight = Color(hex: "#E7D6A2")
+    static let coral = Color(hex: "#C07862")
+    static let indigo = Color(hex: "#8B83A6")
 }
 
-/// 数据洞察的渐变调色板：每张统计卡一种柔和渐变，与品牌同族但更丰富。
+/// 数据洞察的信号调色板：低饱和、可区分，避免统计页面变成彩色装饰墙。
 /// 顺序固定，任务/时段的分类色按序取用，保证图例与图表一致。
 enum DataGradient {
     static func palette(_ index: Int) -> [Color] {
         let palettes: [[Color]] = [
-            [Color(hex: "#2BB8A3"), Color(hex: "#7EE0CF")],       // 青绿
-            [Color(hex: "#E2B84A"), Color(hex: "#F4E3A3")],       // 金
-            [Color(hex: "#E07A3D"), Color(hex: "#F2A878")],       // 珊瑚橙
-            [Color(hex: "#7A9E6B"), Color(hex: "#A9C4A0")],       // 苔绿
-            [Color(hex: "#9B6BD8"), Color(hex: "#C3A3E8")],       // 紫
-            [Color(hex: "#E04A7E"), Color(hex: "#F58FB2")],       // 玫瑰
-            [Color(hex: "#C9A227"), Color(hex: "#E3C96A")],       // 深金
-            [Color(hex: "#D8903A"), Color(hex: "#EFC48A")]        // 琥珀
+            [Color(hex: "#55A99C"), Color(hex: "#A0D0C5")],       // 青绿
+            [Color(hex: "#C7A35A"), Color(hex: "#E7D6A2")],       // 金
+            [Color(hex: "#C07862"), Color(hex: "#D9A18E")],       // 珊瑚
+            [Color(hex: "#879C87"), Color(hex: "#B8C5B4")],       // 苔绿
+            [Color(hex: "#8B83A6"), Color(hex: "#B8B1C8")],       // 紫灰
+            [Color(hex: "#B47D89"), Color(hex: "#D2AAB3")],       // 玫瑰灰
+            [Color(hex: "#A8894A"), Color(hex: "#D0B978")],       // 深金
+            [Color(hex: "#B98960"), Color(hex: "#D1B18E")]        // 琥珀灰
         ]
         return palettes[index % palettes.count]
     }
@@ -167,10 +167,10 @@ struct FrostedCanvas: View {
 }
 
 enum Radius {
-    static let small: CGFloat = 8
-    static let medium: CGFloat = 12
-    static let large: CGFloat = 16
-    static let board: CGFloat = 24
+    static let small: CGFloat = 7
+    static let medium: CGFloat = 10
+    static let large: CGFloat = 14
+    static let board: CGFloat = 18
     static let pill: CGFloat = 999
 }
 
@@ -219,9 +219,21 @@ struct CardSurface: ViewModifier {
             }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.09 : 0.06), lineWidth: 1)
+                    .stroke(
+                        Color.primary.opacity(
+                            colorScheme == .dark
+                                ? min(0.16, borderOpacity + 0.02)
+                                : max(0.05, borderOpacity * 0.82)
+                        ),
+                        lineWidth: 1
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.045),
+                radius: min(max(shadowRadius, 0), 14),
+                y: min(max(shadowY, 0), 6)
+            )
     }
 }
 
@@ -274,8 +286,8 @@ struct InkPillChrome: ViewModifier {
         content
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42))
-                    .overlay(Capsule().stroke(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.55), lineWidth: 1))
+                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04))
+                    .overlay(Capsule().stroke(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.08), lineWidth: 1))
             )
     }
 }
@@ -460,6 +472,10 @@ struct TimeSlotSegmentedControl<Value: Hashable>: View {
                             if isSelected {
                                 Capsule()
                                     .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.08))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(tint.opacity(colorScheme == .dark ? 0.34 : 0.22), lineWidth: 1)
+                                    )
                                     .matchedGeometryEffect(id: "selection", in: selectionAnimation)
                             }
                         }
@@ -502,12 +518,16 @@ struct StatusPillBadge: View {
             Text(title)
                 .font(AppType.caption(Typo.caption, weight: .semibold))
         }
-        .foregroundStyle(Color.primary.opacity(0.78))
+        .foregroundStyle(color.opacity(0.92))
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
         .background(
-            Color.primary.opacity(0.06),
+            color.opacity(0.10),
             in: Capsule()
+        )
+        .overlay(
+            Capsule()
+                .stroke(color.opacity(0.18), lineWidth: 1)
         )
     }
 }
@@ -830,7 +850,7 @@ struct TimeSlotGlowMeter: View {
             .padding(.vertical, 7)
             .background(color.opacity(0.12), in: Capsule())
             .overlay(Capsule().stroke(color.opacity(0.28), lineWidth: 1))
-            .symbolEffect(.pulse, isActive: isRunning)
+            .symbolEffect(.pulse, isActive: isRunning && !reduceMotion)
 
             // 超大辉光数字
             Text(timeText)
@@ -838,7 +858,7 @@ struct TimeSlotGlowMeter: View {
                 .tracking(-2)
                 .monospacedDigit()
                 .foregroundStyle(color)
-                .shadow(color: color.opacity(isRunning ? 0.55 : 0.28), radius: 22)
+                .shadow(color: color.opacity(isRunning ? 0.42 : 0.22), radius: 16)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .frame(maxWidth: 360)
@@ -864,20 +884,20 @@ struct TimeSlotGlowMeter: View {
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [color.opacity(0.4), color, Color.white.opacity(0.9)],
+                            colors: [color.opacity(0.32), color, color.opacity(0.82)],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
                     .frame(width: max(10, glowBarWidth * clamped), height: 10)
-                    .shadow(color: color.opacity(0.5), radius: 7)
+                    .shadow(color: color.opacity(0.36), radius: 5)
 
                 if clamped > 0.02 {
                     Circle()
                         .fill(Color.white.opacity(0.95))
                         .frame(width: 13, height: 13)
                         .offset(x: max(0, glowBarWidth * clamped) - 6.5)
-                        .shadow(color: Color.white.opacity(0.9), radius: 7)
+                        .shadow(color: Color.white.opacity(0.7), radius: 5)
 
                     TimeSlotWedge()
                         .fill(

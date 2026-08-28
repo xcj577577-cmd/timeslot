@@ -278,14 +278,14 @@ struct ContentView: View {
 
     private var pillChrome: some View {
         Capsule()
-            .fill(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42))
-            .overlay(Capsule().stroke(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.55), lineWidth: 1))
+            .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04))
+            .overlay(Capsule().stroke(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.08), lineWidth: 1))
     }
 
     private var circleChrome: some View {
         Circle()
-            .fill(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.42))
-            .overlay(Circle().stroke(Color.white.opacity(colorScheme == .dark ? 0.10 : 0.55), lineWidth: 1))
+            .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04))
+            .overlay(Circle().stroke(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.08), lineWidth: 1))
     }
 
     private var circleChromeSelected: some View {
@@ -355,7 +355,7 @@ struct ContentView: View {
             .help("快捷键速查 (⌘/)")
             .padding(.bottom, 22)
         }
-        .frame(width: 68)
+        .frame(width: 72)
     }
 
     private func railButton(
@@ -370,21 +370,28 @@ struct ContentView: View {
                 selectedSection = section
             }
         } label: {
-            Image(systemName: systemImage)
-                .font(AppType.ui(15, .medium))
-                .frame(width: 36, height: 36)
-                .foregroundStyle(isSelected ? Color.primary : (isHovered ? Color.primary.opacity(0.8) : Color.primary.opacity(0.42)))
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.78))
-                            .shadow(color: Color.black.opacity(0.08), radius: 8, y: 2)
-                    } else if isHovered {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.06))
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(isSelected ? BrandPalette.gold : Color.clear)
+                    .frame(width: 3, height: 18)
+
+                Image(systemName: systemImage)
+                    .font(AppType.ui(15, .medium))
+                    .frame(width: 40, height: 40)
+                    .foregroundStyle(isSelected ? Color.primary : (isHovered ? Color.primary.opacity(0.8) : Color.primary.opacity(0.42)))
+                    .background {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.78))
+                        } else if isHovered {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.06))
+                        }
                     }
-                }
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
+            }
+            .frame(width: 56, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(TimeSlotPressableStyle())
         .onHover { hovering in
@@ -2275,6 +2282,7 @@ struct CountdownHero: View {
     let item: CountdownItem
     let accent: Color
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @ViewBuilder
     var body: some View {
@@ -2302,7 +2310,7 @@ struct CountdownHero: View {
                         StatusPillBadge(
                             title: item.isPaused ? "已暂停" : (isDone ? "已完成" : "进行中 \(percent)%"),
                             icon: item.isPaused ? "pause.circle" : (isDone ? "checkmark.circle.fill" : nil),
-                            color: .primary,
+                            color: item.isPaused ? .secondary : (isDone ? .green : accent),
                             isPulsing: !item.isPaused && !isDone
                         )
                     }
@@ -2336,7 +2344,7 @@ struct CountdownHero: View {
                     Image(systemName: isDone ? "checkmark.circle.fill" : (item.isPaused ? "pause.fill" : "timer"))
                         .font(AppType.ui(Typo.icon, .medium))
                         .foregroundStyle(accent)
-                        .symbolEffect(.pulse, isActive: !isDone && !item.isPaused)
+                        .symbolEffect(.pulse, isActive: !isDone && !item.isPaused && !reduceMotion)
                 }
             }
 

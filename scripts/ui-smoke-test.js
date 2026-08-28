@@ -27,9 +27,11 @@ function indexForIdentifier(identifier) {
     return Number(match[1]);
 }
 
+await sky.click({ app, element_index: indexForIdentifier("square.grid.2x2") });
+state = await sky.get_app_state({ app, disableDiff: true });
+
 requireText("launch", "时隙");
 requireText("countdown page", "倒计时");
-requireText("countdown list", "全部倒计时");
 var menuBarStart = state.text.indexOf("menu bar");
 var menuBarText = menuBarStart >= 0 ? state.text.slice(menuBarStart) : "";
 var helpMenuCount = menuBarText.split("帮助").length - 1;
@@ -43,7 +45,7 @@ requireText("settings page", "提醒、小组件与专注节奏");
 requireText("notification state", "系统通知");
 requireText("widget settings", "桌面小组件");
 
-await sky.click({ app, element_index: indexForIdentifier("timeslot.segment.pomodoro") });
+await sky.click({ app, element_index: indexForIdentifier("timer") });
 state = await sky.get_app_state({ app, disableDiff: true });
 requireText("pomodoro page", "番茄钟");
 requireText("pomodoro focus workspace", "当前任务");

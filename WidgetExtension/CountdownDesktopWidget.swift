@@ -26,14 +26,14 @@ private let widgetBreakLightHex = "#6B6B74"
 private let widgetBreakDarkHex = "#8E8E96"
 private let widgetLongBreakLightHex = "#4F4F58"
 private let widgetLongBreakDarkHex = "#7A7A82"
-private let widgetBrandInkHex = "#0A1926"
-private let widgetBrandDeepTealHex = "#103D3B"
-private let widgetBrandTealHex = "#35B79F"
-private let widgetBrandMintHex = "#8CE4D0"
-private let widgetBrandGoldHex = "#E8C27A"
+private let widgetBrandInkHex = "#17191E"
+private let widgetBrandDeepTealHex = "#2A3835"
+private let widgetBrandTealHex = "#6AACA0"
+private let widgetBrandMintHex = "#B3D5CC"
+private let widgetBrandGoldHex = "#D1B16A"
 
 private enum WidgetColorHex {
-    static let fallback = "#2C8C7C"
+    static let fallback = widgetAccentLightHex
 
     static func normalized(_ value: String) -> String {
         guard let components = components(from: value) else { return fallback }
@@ -962,7 +962,8 @@ struct CountdownDesktopWidgetView: View {
     }
 
     private func adaptiveAccent(_ hex: String) -> Color {
-        let components = WidgetColorHex.components(from: hex)
+        let displayHex = colorScheme == .dark ? darkVariant(for: hex) : hex
+        let components = WidgetColorHex.components(from: displayHex)
             ?? WidgetColorHex.components(from: WidgetColorHex.fallback)
             ?? (0.17, 0.55, 0.49, 1)
         guard colorScheme == .dark else {
@@ -974,14 +975,16 @@ struct CountdownDesktopWidgetView: View {
                 opacity: components.alpha
             )
         }
-        let lift = 0.18
-        return Color(
-            .sRGB,
-            red: components.red + (1 - components.red) * lift,
-            green: components.green + (1 - components.green) * lift,
-            blue: components.blue + (1 - components.blue) * lift,
-            opacity: components.alpha
-        )
+        return Color(.sRGB, red: components.red, green: components.green, blue: components.blue, opacity: components.alpha)
+    }
+
+    private func darkVariant(for hex: String) -> String {
+        switch hex.uppercased() {
+        case widgetAccentLightHex: return widgetAccentDarkHex
+        case widgetBreakLightHex: return widgetBreakDarkHex
+        case widgetLongBreakLightHex: return widgetLongBreakDarkHex
+        default: return hex
+        }
     }
 
     private func countdownContent(_ item: SharedCountdownItem, date: Date) -> some View {
