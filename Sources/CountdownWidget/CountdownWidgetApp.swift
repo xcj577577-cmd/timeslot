@@ -711,16 +711,18 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: Space.l) {
             homeCommandDeck
 
-            HStack(alignment: .top, spacing: Space.l) {
+            HStack(alignment: .top, spacing: Space.xl) {
                 homeCalendarBoard
                     .frame(maxWidth: .infinity)
 
                 homeSignalDeck
-                    .frame(width: 286)
+                    .frame(width: 300)
             }
 
             homeTrendCard
         }
+        .padding(.horizontal, 4)
+        .padding(.bottom, Space.xl)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
@@ -729,7 +731,7 @@ struct ContentView: View {
         let state = store.pomodoro
         let goalHours = max(1, state.weeklyFocusGoalMinutes / 60)
 
-        return HStack(alignment: .top, spacing: Space.xl) {
+        return HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: Space.m) {
                 HStack(alignment: .center) {
                     Label("下一目标", systemImage: "calendar.badge.clock")
@@ -801,7 +803,8 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
-                .frame(height: 174)
+                .frame(height: 154)
+                .padding(.horizontal, Space.xl)
 
             VStack(alignment: .leading, spacing: Space.m) {
                 HStack {
@@ -862,8 +865,26 @@ struct ContentView: View {
             }
             .frame(width: 260, alignment: .leading)
         }
-        .padding(Space.xl)
-        .cardSurface(cornerRadius: Radius.board, borderOpacity: 0.12, shadowRadius: 16, shadowY: 5)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 20)
+        .background {
+            RoundedRectangle(cornerRadius: Radius.board, style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.055) : Color.white.opacity(0.82))
+                .overlay(alignment: .top) {
+                    LinearGradient(
+                        colors: [BrandPalette.gold.opacity(0.86), accent.opacity(0.42), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(height: 1)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.board, style: .continuous))
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Radius.board, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.08), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06), radius: 16, y: 6)
     }
 
     private var homeSignalDeck: some View {
@@ -878,7 +899,7 @@ struct ContentView: View {
                     .font(AppType.ui(Typo.footnote, .medium))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("本周")
+                Text("5 项信号")
                     .font(AppType.caption(10.5, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -894,6 +915,10 @@ struct ContentView: View {
                     : todayTaskBreakdown.prefix(2).map(\.title).joined(separator: " · "),
                 color: DataGradient.base(0)
             )
+
+            Divider()
+
+            homeTaskDistributionRow
 
             Divider()
 
@@ -922,9 +947,88 @@ struct ContentView: View {
                 detail: topSlot.map { homeFocusDurationText($0.minutes * 60) } ?? "近 7 天暂无数据",
                 color: DataGradient.base(3)
             )
+
+            Divider()
+
+            HStack(spacing: Space.s) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(AppType.caption(11, weight: .semibold))
+                    .foregroundStyle(BrandPalette.teal)
+                Text("本地记录 · 实时同步")
+                    .font(AppType.caption(10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text("北京时间")
+                    .font(AppType.caption(10))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.top, Space.s)
         }
-        .padding(Space.l)
-        .cardSurface(cornerRadius: Radius.board, borderOpacity: 0.08, shadowRadius: 12, shadowY: 4)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .glassBoard(wash: BrandPalette.teal)
+    }
+
+    private var homeTaskDistributionRow: some View {
+        let points = todayTaskBreakdown
+        let total = max(1, points.reduce(0) { $0 + $1.minutes })
+
+        return VStack(alignment: .leading, spacing: Space.s) {
+            HStack(alignment: .firstTextBaseline) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(DataGradient.base(4))
+                    .frame(width: 3, height: 15)
+                Text("任务分布")
+                    .font(AppType.caption(11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(points.isEmpty ? "--" : "今日")
+                    .font(AppType.caption(10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            if points.isEmpty {
+                Text("完成一个阶段后显示任务占比")
+                    .font(AppType.caption(10.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else {
+                VStack(spacing: 5) {
+                    ForEach(Array(points.prefix(2).enumerated()), id: \.offset) { index, point in
+                        HStack(spacing: Space.s) {
+                            Text(point.title)
+                                .font(AppType.caption(10.5, weight: .medium))
+                                .foregroundStyle(.primary.opacity(0.78))
+                                .lineLimit(1)
+                                .frame(width: 44, alignment: .leading)
+                            GeometryReader { proxy in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.primary.opacity(0.08))
+                                    Capsule()
+                                        .fill(point.color.opacity(0.88))
+                                        .frame(width: proxy.size.width * CGFloat(point.minutes / total))
+                                }
+                            }
+                            .frame(height: 5)
+                            Text("\(Int((point.minutes / total) * 100))%")
+                                .font(AppType.caption(10, weight: .medium))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 30, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, Space.s)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("今日任务分布")
+        .accessibilityValue(
+            points.isEmpty
+                ? "暂无记录"
+                : points.prefix(2).map { "\($0.title) \(Int(($0.minutes / total) * 100))%" }.joined(separator: "，")
+        )
     }
 
     private func homeSignalRow(

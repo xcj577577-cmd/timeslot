@@ -147,8 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             malloc_zone_pressure_relief(nil, 0)
         }
-        // 强制所有滚动容器使用 overlay 细滚动条（滚动时才出现、悬停才加粗），
-        // 覆盖「始终显示滚动条」的系统设置，贴合看板式界面。
+        // 看板使用触控板/滚轮滚动；隐藏 AppKit 的粗滚动条，避免破坏内容边界。
         forceOverlayScrollers()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             self?.forceOverlayScrollers()
@@ -163,6 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let scrollView = view as? NSScrollView {
                 scrollView.scrollerStyle = .overlay
                 scrollView.autohidesScrollers = true
+                scrollView.hasVerticalScroller = false
+                scrollView.hasHorizontalScroller = false
                 scrollView.scrollerKnobStyle = colorSchemeScrollerKnob()
             }
             view.subviews.forEach(walk)
