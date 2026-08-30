@@ -208,7 +208,7 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 12) {
             HStack(spacing: 12) {
                 BrandMark(size: 32)
-                VStack(alignment: .center, spacing: 1) {
+                VStack(alignment: .trailing, spacing: 1) {
                     Text("TIMESLOT")
                         .font(.custom("Futura-Medium", fixedSize: 19))
                         .tracking(1.25)
