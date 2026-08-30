@@ -18,3 +18,5 @@ work/
 
 # 构建临时目录
 /tmp/xianz-*
+
+build/
