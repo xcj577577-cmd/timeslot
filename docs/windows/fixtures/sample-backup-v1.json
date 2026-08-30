@@ -1,0 +1,72 @@
+{
+  "displayMode" : "both",
+  "exportedAt" : 800000000,
+  "history" : [
+    {
+      "actualDuration" : 1500,
+      "endedAt" : 799995600,
+      "id" : "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "phase" : "focus",
+      "plannedDuration" : 1500,
+      "startedAt" : 799995410,
+      "status" : "completed",
+      "taskTitle" : "写作"
+    },
+    {
+      "actualDuration" : 3600,
+      "endedAt" : 799999200,
+      "id" : "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "phase" : "focus",
+      "plannedDuration" : 0,
+      "startedAt" : 799998840,
+      "status" : "stopwatch",
+      "taskTitle" : "复习"
+    }
+  ],
+  "items" : [
+    {
+      "colorHex" : "#2C8C7C",
+      "createdAt" : 790000000,
+      "id" : "0f1e2d3c-4b5a-4968-8776-655443322211",
+      "isPinned" : true,
+      "pausedRemaining" : null,
+      "targetDate" : 850000000,
+      "title" : "项目上线",
+      "totalDuration" : 60000000
+    },
+    {
+      "colorHex" : "#B48EAD",
+      "createdAt" : 792000000,
+      "id" : "11223344-5566-4778-899a-bbccddeeff00",
+      "isPinned" : false,
+      "pausedRemaining" : 123456.5,
+      "targetDate" : 900000000,
+      "title" : "旅行出发",
+      "totalDuration" : 108000000
+    }
+  ],
+  "pomodoro" : {
+    "focusMinutes" : 25,
+    "phase" : "focus",
+    "roundsBeforeLongBreak" : 4,
+    "shortBreakMinutes" : 5,
+    "taskTitle" : "写作",
+    "weeklyFocusGoalMinutes" : 600
+  },
+  "schemaVersion" : 1,
+  "tasks" : [
+    {
+      "colorHex" : "",
+      "createdAt" : 791000000,
+      "id" : "ccdd1122-3344-4556-a7b8-c9d0e1f2a3b4",
+      "title" : "写作"
+    },
+    {
+      "colorHex" : "#D08770",
+      "createdAt" : 791500000,
+      "id" : "eeff0099-8877-4665-9443-221100ffeedd",
+      "title" : "复习"
+    }
+  ],
+  "timeUnit" : "auto"
+}
