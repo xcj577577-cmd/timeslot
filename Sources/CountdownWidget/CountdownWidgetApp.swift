@@ -3112,10 +3112,6 @@ private struct HomeHourTimeline: View {
     @State private var lastWorldWidth: CGFloat = 0
     @State private var lastWorldHeight: CGFloat = 0
     @State private var lastDayCount = 7
-    @State private var pinchStartScaleX: CGFloat = 1
-    @State private var pinchStartScaleY: CGFloat = 1
-    @State private var pinchStartPan = CGSize.zero
-    @State private var isPinching = false
     // 视口拖动时只改变位移，不再反复扫描最多一万条历史记录。
     // 快照仅在历史、任务、计时状态、分钟时钟或配色变化时更新。
     @State private var cachedDays: [Date] = []
@@ -3191,7 +3187,6 @@ private struct HomeHourTimeline: View {
                         .clipped()
                         .contentShape(Rectangle())
                         .gesture(panGesture)
-                        .simultaneousGesture(zoomGesture)
                     }
 
                     HStack(spacing: 0) {
@@ -3276,30 +3271,6 @@ private struct HomeHourTimeline: View {
                         height: pan.height + value.translation.height
                     )
                 )
-            }
-    }
-
-    private var zoomGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { value in
-                if !isPinching {
-                    isPinching = true
-                    pinchStartScaleX = scaleX
-                    pinchStartScaleY = scaleY
-                    pinchStartPan = pan
-                }
-                zoom(
-                    fromScaleX: pinchStartScaleX,
-                    fromScaleY: pinchStartScaleY,
-                    fromPan: pinchStartPan,
-                    factorX: value,
-                    factorY: value,
-                    around: interactionState.hoverPoint,
-                    dayCount: lastDayCount
-                )
-            }
-            .onEnded { _ in
-                isPinching = false
             }
     }
 
@@ -3578,10 +3549,23 @@ private struct HomeHourTimeline: View {
 
     private func installScrollMonitor() {
         removeScrollMonitor()
-        // 捏合缩放只交给 SwiftUI 的 MagnificationGesture；若这里再监听 .magnify，
-        // 同一帧会被处理两次，比例与焦点互相覆盖，正是此前“发涩”的主要来源。
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { event in
+        // AppKit 是这里唯一的捏合事件源。SwiftUI 的 MagnificationGesture 在嵌套的
+        // 自定义拖动层里会漏掉 macOS 捏合事件；只保留一个 AppKit 入口也不会重复缩放。
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify]) { event in
             guard hovering else { return event }
+            if event.type == .magnify {
+                let factor = max(0.5, 1 + event.magnification)
+                zoom(
+                    fromScaleX: scaleX,
+                    fromScaleY: scaleY,
+                    fromPan: pan,
+                    factorX: factor,
+                    factorY: factor,
+                    around: interactionState.hoverPoint,
+                    dayCount: lastDayCount
+                )
+                return nil
+            }
             if event.modifierFlags.contains(.command) {
                 // ⌘+滚轮：水平缩放；加 Shift 只缩放垂直。
                 let factor = CGFloat(pow(1.01, Double(event.scrollingDeltaY)))
