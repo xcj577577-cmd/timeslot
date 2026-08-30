@@ -27,7 +27,7 @@ function indexForIdentifier(identifier) {
     return Number(match[1]);
 }
 
-await sky.click({ app, element_index: indexForIdentifier("square.grid.2x2") });
+await sky.click({ app, element_index: indexForIdentifier("timeslot.navigation.home") });
 state = await sky.get_app_state({ app, disableDiff: true });
 
 requireText("launch", "时隙");
@@ -39,13 +39,13 @@ if (helpMenuCount !== 1) {
     throw new Error(`native help menu: expected one top-level menu, found ${helpMenuCount}`);
 }
 
-await sky.click({ app, element_index: indexForIdentifier("timeslot.settings.open") });
+await sky.click({ app, element_index: indexForIdentifier("timeslot.navigation.settings") });
 state = await sky.get_app_state({ app, disableDiff: true });
 requireText("settings page", "提醒、小组件与专注节奏");
 requireText("notification state", "系统通知");
 requireText("widget settings", "桌面小组件");
 
-await sky.click({ app, element_index: indexForIdentifier("timer") });
+await sky.click({ app, element_index: indexForIdentifier("timeslot.navigation.pomodoro") });
 state = await sky.get_app_state({ app, disableDiff: true });
 requireText("pomodoro page", "番茄钟");
 requireText("pomodoro focus workspace", "当前任务");
@@ -58,5 +58,7 @@ await sky.click({ app, element_index: Number(insightsIndex[1]) });
 state = await sky.get_app_state({ app, disableDiff: true });
 requireText("pomodoro insights workspace", "阶段记录");
 requireText("history filter", "查看时间范围");
+
+await sky.click({ app, element_index: indexForIdentifier("timeslot.navigation.home") });
 
 nodeRepl.write("时隙 UI 冒烟测试通过：启动、帮助菜单、设置、通知状态、番茄钟与阶段记录均可访问。\n");

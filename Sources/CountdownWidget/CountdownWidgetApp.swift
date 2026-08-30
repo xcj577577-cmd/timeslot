@@ -209,16 +209,12 @@ struct ContentView: View {
             HStack(spacing: 12) {
                 BrandMark(size: 32)
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        Text("Time")
-                            .font(.system(size: 26, weight: .ultraLight, design: .serif))
-                        Text("Slot")
-                            .font(.system(size: 26, weight: .regular, design: .serif))
-                    }
-                    .tracking(-0.8)
+                    Text("TimeSlot")
+                        .font(AppType.pageTitle(24))
+                        .tracking(-0.45)
                     Text(workspaceTitle)
-                        .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                        .tracking(0.9)
+                        .font(AppType.caption(9.5, weight: .medium))
+                        .tracking(0.55)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -237,41 +233,6 @@ struct ContentView: View {
             .buttonStyle(TimeSlotPressableStyle())
             .background(pillChrome)
             .help("1:1 预览桌面小组件")
-
-            Button {
-                showingShortcuts = true
-            } label: {
-                Image(systemName: "keyboard")
-                    .font(AppType.ui(13, .medium))
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(TimeSlotPressableStyle())
-            .background(circleChrome)
-            .help("快捷键速查 (⌘/)")
-            .accessibilityLabel("快捷键")
-
-            Button {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                    selectedSection = .settings
-                }
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(AppType.ui(13, .medium))
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(TimeSlotPressableStyle())
-            .background {
-                if selectedSection == .settings {
-                    circleChromeSelected
-                } else {
-                    circleChrome
-                }
-            }
-            .foregroundStyle(Color.primary.opacity(0.72))
-            .help("设置")
-            .accessibilityLabel("设置")
-            .accessibilityIdentifier("timeslot.settings.open")
-            .accessibilityValue(selectedSection == .settings ? "已选中" : "未选中")
         }
         .padding(.leading, 8)
     }
@@ -286,12 +247,6 @@ struct ContentView: View {
         Circle()
             .fill(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04))
             .overlay(Circle().stroke(Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.08), lineWidth: 1))
-    }
-
-    private var circleChromeSelected: some View {
-        Circle()
-            .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.08))
-            .overlay(Circle().stroke(Color.primary.opacity(0.10), lineWidth: 1))
     }
 
     private var workspaceTitle: String {
@@ -399,6 +354,7 @@ struct ContentView: View {
         }
         .help(title)
         .accessibilityLabel(title)
+        .accessibilityIdentifier("timeslot.navigation.\(section.rawValue)")
         .accessibilityValue(isSelected ? "已选中" : "未选中")
     }
 
@@ -850,15 +806,6 @@ struct ContentView: View {
         .background {
             RoundedRectangle(cornerRadius: Radius.board, style: .continuous)
                 .fill(colorScheme == .dark ? Color.white.opacity(0.055) : Color.white.opacity(0.82))
-                .overlay(alignment: .top) {
-                    LinearGradient(
-                        colors: [BrandPalette.gold.opacity(0.86), accent.opacity(0.42), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(height: 1)
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.board, style: .continuous))
-                }
         }
         .overlay {
             RoundedRectangle(cornerRadius: Radius.board, style: .continuous)
@@ -1045,12 +992,26 @@ struct ContentView: View {
         .padding(.vertical, Space.m)
     }
 
+    @ViewBuilder
     private var homeCalendarBoard: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            HomeHourTimeline(store: store, currentDate: context.date) {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                    selectedSection = .pomodoro
-                }
+        let hasLiveBlock = store.pomodoro.isStopwatchActive
+            || (store.pomodoro.isRunning && store.pomodoro.phase == .focus)
+        if hasLiveBlock {
+            // 只有进行中的记录需要每分钟延长任务块；空闲时让整张时间轴保持静态。
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                homeHourTimeline(at: context.date)
+            }
+        } else {
+            // 空闲快照只需要“今天”这个稳定标识；避免当前时间线更新时，Date() 的细微变化
+            // 被误判成历史数据变化，再次扫描和布局整张时间轴。
+            homeHourTimeline(at: beijingCalendar.startOfDay(for: Date()))
+        }
+    }
+
+    private func homeHourTimeline(at date: Date) -> some View {
+        HomeHourTimeline(store: store, currentDate: date) {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                selectedSection = .pomodoro
             }
         }
     }
@@ -1088,8 +1049,7 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("今日分布")
-                    .font(AppType.pageTitle(15))
-                    .tracking(0.2)
+                    .font(AppType.title(15))
                 Spacer()
             }
             if totalMinutes >= 1 {
@@ -1111,7 +1071,8 @@ struct ContentView: View {
                 .overlay(alignment: .center) {
                     VStack(spacing: 0) {
                         Text("\(Int(totalMinutes))")
-                            .font(.system(size: 21, weight: .light, design: .serif))
+                            .font(AppType.timer(21))
+                            .monospacedDigit()
                         Text("分钟")
                             .font(AppType.caption(9.5))
                             .foregroundStyle(.secondary)
@@ -1140,8 +1101,7 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("连续专注")
-                    .font(AppType.pageTitle(15))
-                    .tracking(0.2)
+                    .font(AppType.title(15))
                 Spacer()
                 Image(systemName: "flame.fill")
                     .font(AppType.ui(15, .medium))
@@ -1150,7 +1110,8 @@ struct ContentView: View {
             Spacer()
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text("\(days)")
-                    .font(.system(size: 42, weight: .light, design: .serif))
+                    .font(AppType.timer(40))
+                    .monospacedDigit()
                 Text("天")
                     .font(AppType.ui(14))
                     .foregroundStyle(.secondary)
@@ -1173,8 +1134,7 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("时段分布")
-                    .font(AppType.pageTitle(15))
-                    .tracking(0.2)
+                    .font(AppType.title(15))
                 Spacer()
                 if let best, best.minutes > 0 {
                     Label(best.label, systemImage: best.icon)
@@ -1226,8 +1186,7 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("本周累计")
-                    .font(AppType.pageTitle(15))
-                    .tracking(0.2)
+                    .font(AppType.title(15))
                 Spacer()
                 Text(String(format: "%.1f / %d 小时", hours, goalHours))
                     .font(AppType.caption(11, weight: .semibold))
@@ -1237,7 +1196,8 @@ struct ContentView: View {
             Spacer()
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(String(format: "%.1f", hours))
-                    .font(.system(size: 34, weight: .light, design: .serif))
+                    .font(AppType.timer(32))
+                    .monospacedDigit()
                 Text("小时")
                     .font(AppType.ui(13))
                     .foregroundStyle(.secondary)
@@ -1263,8 +1223,7 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("近 7 天专注趋势")
-                    .font(AppType.pageTitle(15))
-                    .tracking(0.2)
+                    .font(AppType.title(15))
                 Spacer()
                 Text("北京时间 · 周一至周日")
                     .font(AppType.caption())
@@ -1278,7 +1237,7 @@ struct ContentView: View {
                 )
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [DataGradient.base(0), DataGradient.base(4)],
+                        colors: [BrandPalette.mint, BrandPalette.teal],
                         startPoint: .bottom,
                         endPoint: .top
                     )
@@ -1286,26 +1245,35 @@ struct ContentView: View {
                 .cornerRadius(4)
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 7)) {
-                    AxisValueLabel(format: .dateTime.weekday(.narrow))
-                        .font(AppType.caption(10))
-                        .foregroundStyle(.secondary)
+                AxisMarks(values: points.map(\.day)) { value in
+                    AxisValueLabel {
+                        if let day = value.as(Date.self) {
+                            Text(homeWeekdayLetter(day))
+                                .foregroundStyle(Color.primary.opacity(colorScheme == .dark ? 0.58 : 0.46))
+                        }
+                    }
+                    .font(AppType.caption(10, weight: .medium))
                 }
             }
             .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                     AxisGridLine()
                         .foregroundStyle(Surface.gridLine)
-                    AxisValueLabel()
-                        .font(AppType.caption(9))
-                        .foregroundStyle(.secondary)
+                    AxisValueLabel {
+                        if let minutes = value.as(Double.self) {
+                            Text("\(Int(minutes))")
+                                .monospacedDigit()
+                                .foregroundStyle(Color.primary.opacity(colorScheme == .dark ? 0.52 : 0.42))
+                        }
+                    }
+                    .font(AppType.caption(9, weight: .medium))
                 }
             }
             .frame(height: 92)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .glassBoard(wash: DataGradient.base(4))
+        .glassBoard(wash: DataGradient.base(0))
     }
 
     private func homeMiniMetric(eyebrow: String, value: String, footnote: String, progress: CGFloat? = nil) -> some View {
@@ -1338,6 +1306,11 @@ struct ContentView: View {
         return store.items
             .filter { !$0.isPaused && $0.remaining(at: now) > 0 }
             .sorted { $0.targetDate < $1.targetDate }
+    }
+
+    private func homeWeekdayLetter(_ date: Date) -> String {
+        let names = ["日", "一", "二", "三", "四", "五", "六"]
+        return names[beijingCalendar.component(.weekday, from: date) - 1]
     }
 
     private var todayTaskBreakdown: [(title: String, minutes: Double, color: Color)] {
@@ -3128,44 +3101,47 @@ private struct HomeHourTimeline: View {
 
     @State private var pan = CGSize.zero
     @State private var scaleX: CGFloat = 1
-    @State private var scaleY: CGFloat = 1
+    @State private var scaleY: CGFloat = 1.35
     @GestureState private var drag = CGSize.zero
     @State private var hovering = false
     // 指针位置只供缩放手势使用，不发布为 SwiftUI 状态，避免连续 hover 触发整张时间轴重绘。
     @State private var interactionState = TimelineInteractionState()
     @State private var scrollMonitor: Any?
     @State private var lastPlotWidth: CGFloat = 0
+    @State private var lastPlotHeight: CGFloat = 0
     @State private var lastWorldWidth: CGFloat = 0
+    @State private var lastWorldHeight: CGFloat = 0
+    @State private var lastDayCount = 7
     @State private var pinchStartScaleX: CGFloat = 1
     @State private var pinchStartScaleY: CGFloat = 1
     @State private var pinchStartPan = CGSize.zero
     @State private var isPinching = false
+    // 视口拖动时只改变位移，不再反复扫描最多一万条历史记录。
+    // 快照仅在历史、任务、计时状态、分钟时钟或配色变化时更新。
+    @State private var cachedDays: [Date] = []
+    @State private var cachedBlocks: [TimelineBlock] = []
 
-    private let hourGutter: CGFloat = 36
-    private let headerHeight: CGFloat = 42
+    private let hourGutter: CGFloat = 44
+    private let headerHeight: CGFloat = 44
     private let fillDayCount: CGFloat = 7
+    private let defaultScaleY: CGFloat = 1.35
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text("时间轴")
-                    .font(AppType.pageTitle(22))
-                    .tracking(-0.3)
+                    .font(AppType.title(20))
                 Spacer()
                 Button("回到今天") {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.9)) {
-                        scaleX = 1
-                        scaleY = 1
-                        pan = CGSize(width: min(0, lastPlotWidth - lastWorldWidth), height: 0)
-                    }
+                    resetViewport()
                 }
-                .font(.system(size: 11, weight: .regular))
+                .font(AppType.caption(11, weight: .medium))
                 .foregroundStyle(.secondary)
                 .buttonStyle(TimeSlotPressableStyle())
             }
 
             GeometryReader { geo in
-                let days = timelineDays(at: currentDate)
+                let days = cachedDays.isEmpty ? timelineDays(at: currentDate) : cachedDays
                 let livePan = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
                 let plotWidth = max(1, geo.size.width - hourGutter)
                 let scrubberHeight: CGFloat = 22
@@ -3183,8 +3159,7 @@ private struct HomeHourTimeline: View {
                 let worldWidth = CGFloat(days.count) * dayWidth
                 let worldHeight = 24 * hourHeight
                 let clamped = clampPan(livePan, plotWidth: plotWidth, plotHeight: plotHeight, worldWidth: worldWidth, worldHeight: worldHeight)
-                let blocks = timelineBlocks(days: days, at: currentDate)
-                let dailyTotals = dailyMinutes(blocks: blocks, dayCount: days.count)
+                let blocks = cachedDays.isEmpty ? timelineBlocks(days: days, at: currentDate) : cachedBlocks
 
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
@@ -3205,17 +3180,10 @@ private struct HomeHourTimeline: View {
                             ForEach(blocks) { block in
                                 timelineBlockView(block, dayWidth: dayWidth, hourHeight: hourHeight)
                             }
-                            ForEach(Array(dailyTotals.enumerated()), id: \.offset) { index, minutes in
-                                if minutes >= 30 {
-                                    Text(minutes >= 60 ? String(format: "%.1fh", minutes / 60) : "\(Int(minutes))m")
-                                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                        .monospacedDigit()
-                                        .foregroundStyle(minutes >= 180 ? store.accentPreset.color : Color.secondary.opacity(0.9))
-                                        .position(x: CGFloat(index) * dayWidth + dayWidth / 2, y: worldHeight - 10)
-                                        .allowsHitTesting(false)
-                                }
+                            // 当前时间线单独按分钟更新，不再带着历史任务块和整个看板一起重算。
+                            TimelineView(.periodic(from: .now, by: 60)) { context in
+                                nowLine(days: days, dayWidth: dayWidth, hourHeight: hourHeight, date: context.date)
                             }
-                            nowLine(days: days, dayWidth: dayWidth, hourHeight: hourHeight, date: currentDate)
                         }
                         .frame(width: worldWidth, height: worldHeight, alignment: .topLeading)
                         .offset(clamped)
@@ -3224,8 +3192,6 @@ private struct HomeHourTimeline: View {
                         .contentShape(Rectangle())
                         .gesture(panGesture)
                         .simultaneousGesture(zoomGesture)
-                        .animation(reduceMotion ? nil : .interactiveSpring(response: 0.18, dampingFraction: 1.0), value: scaleX)
-                        .animation(reduceMotion ? nil : .interactiveSpring(response: 0.18, dampingFraction: 1.0), value: scaleY)
                     }
 
                     HStack(spacing: 0) {
@@ -3240,14 +3206,35 @@ private struct HomeHourTimeline: View {
                     }
                 }
                 .onAppear {
-                    pan = CGSize(width: min(0, plotWidth - worldWidth), height: 0)
+                    pan = CGSize(
+                        width: min(0, plotWidth - worldWidth),
+                        height: min(0, max(plotHeight - worldHeight, -6 * hourHeight))
+                    )
                     lastPlotWidth = plotWidth
+                    lastPlotHeight = plotHeight
                     lastWorldWidth = worldWidth
+                    lastWorldHeight = worldHeight
+                    lastDayCount = days.count
+                    refreshTimelineSnapshot(at: currentDate)
                     installScrollMonitor()
                 }
                 .onChange(of: worldWidth) { _, newWidth in
                     lastWorldWidth = newWidth
                     lastPlotWidth = plotWidth
+                    lastDayCount = days.count
+                    pan = clampedPan(pan)
+                }
+                .onChange(of: worldHeight) { _, newHeight in
+                    lastWorldHeight = newHeight
+                    lastPlotHeight = plotHeight
+                    pan = clampedPan(pan)
+                }
+                .onChange(of: geo.size) { _, _ in
+                    lastPlotWidth = plotWidth
+                    lastPlotHeight = plotHeight
+                    lastWorldWidth = worldWidth
+                    lastWorldHeight = worldHeight
+                    pan = clampedPan(pan)
                 }
                 .onDisappear { removeScrollMonitor() }
             }
@@ -3259,20 +3246,16 @@ private struct HomeHourTimeline: View {
                 }
             }
         }
+        .onChange(of: currentDate) { _, date in refreshTimelineSnapshot(at: date) }
+        .onChange(of: store.pomodoroHistory) { _, _ in refreshTimelineSnapshot(at: currentDate) }
+        .onChange(of: store.pomodoroTasks) { _, _ in refreshTimelineSnapshot(at: currentDate) }
+        .onChange(of: store.pomodoro) { _, _ in refreshTimelineSnapshot(at: currentDate) }
+        .onChange(of: colorScheme) { _, _ in refreshTimelineSnapshot(at: currentDate) }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 340, alignment: .topLeading)
         .background(alignment: .topTrailing) {
             Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            DataGradient.base(0).opacity(colorScheme == .dark ? 0.10 : 0.12),
-                            DataGradient.base(1).opacity(colorScheme == .dark ? 0.05 : 0.06)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(store.accentPreset.color.opacity(colorScheme == .dark ? 0.08 : 0.07))
                 .frame(width: 300, height: 300)
                 .blur(radius: 70)
                 .offset(x: 70, y: -70)
@@ -3287,8 +3270,12 @@ private struct HomeHourTimeline: View {
                 state = value.translation
             }
             .onEnded { value in
-                pan.width += value.translation.width
-                pan.height += value.translation.height
+                pan = clampedPan(
+                    CGSize(
+                        width: pan.width + value.translation.width,
+                        height: pan.height + value.translation.height
+                    )
+                )
             }
     }
 
@@ -3308,7 +3295,7 @@ private struct HomeHourTimeline: View {
                     factorX: value,
                     factorY: value,
                     around: interactionState.hoverPoint,
-                    dayCount: timelineDays().count
+                    dayCount: lastDayCount
                 )
             }
             .onEnded { _ in
@@ -3330,12 +3317,31 @@ private struct HomeHourTimeline: View {
         let minX = minScaleX(for: dayCount)
         let nextX = min(2.8, max(minX, fromScaleX * factorX))
         let nextY = min(3.0, max(1.0, fromScaleY * factorY))
-        let widthFactor = nextX / max(fromScaleX, 0.001)
+        let count = CGFloat(max(dayCount, 1))
+        let worldWidthAtScale: (CGFloat) -> CGFloat = { scale in
+            count * max(lastPlotWidth / count, (lastPlotWidth / fillDayCount) * scale)
+        }
+        let fromWorldWidth = worldWidthAtScale(fromScaleX)
+        let nextWorldWidth = worldWidthAtScale(nextX)
+        let widthFactor = nextWorldWidth / max(fromWorldWidth, 0.001)
         let heightFactor = nextY / max(fromScaleY, 0.001)
+        let focalPoint = CGPoint(
+            x: min(lastPlotWidth, max(0, focal.x)),
+            y: min(lastPlotHeight, max(0, focal.y))
+        )
         scaleX = nextX
         scaleY = nextY
-        pan.width = focal.x - (focal.x - fromPan.width) * widthFactor
-        pan.height = focal.y - (focal.y - fromPan.height) * heightFactor
+        let proposed = CGSize(
+            width: focalPoint.x - (focalPoint.x - fromPan.width) * widthFactor,
+            height: focalPoint.y - (focalPoint.y - fromPan.height) * heightFactor
+        )
+        pan = clampPan(
+            proposed,
+            plotWidth: lastPlotWidth,
+            plotHeight: lastPlotHeight,
+            worldWidth: nextWorldWidth,
+            worldHeight: lastPlotHeight * nextY
+        )
     }
 
     private func clampPan(_ value: CGSize, plotWidth: CGFloat, plotHeight: CGFloat, worldWidth: CGFloat, worldHeight: CGFloat) -> CGSize {
@@ -3345,6 +3351,47 @@ private struct HomeHourTimeline: View {
             width: min(0, max(minX, value.width)),
             height: min(0, max(minY, value.height))
         )
+    }
+
+    private func clampedPan(_ value: CGSize) -> CGSize {
+        clampPan(
+            value,
+            plotWidth: lastPlotWidth,
+            plotHeight: lastPlotHeight,
+            worldWidth: lastWorldWidth,
+            worldHeight: lastWorldHeight
+        )
+    }
+
+    private func resetViewport() {
+        let count = CGFloat(max(lastDayCount, 1))
+        let dayWidth = max(lastPlotWidth / count, (lastPlotWidth / fillDayCount))
+        let resetWorldWidth = count * dayWidth
+        let resetWorldHeight = lastPlotHeight * defaultScaleY
+        let target = CGSize(
+            width: min(0, lastPlotWidth - resetWorldWidth),
+            height: min(0, max(lastPlotHeight - resetWorldHeight, -resetWorldHeight / 4))
+        )
+        let changes = {
+            scaleX = 1
+            scaleY = defaultScaleY
+            pan = target
+        }
+        if reduceMotion {
+            changes()
+        } else {
+            withAnimation(.spring(response: 0.34, dampingFraction: 1)) {
+                changes()
+            }
+        }
+    }
+
+    private func refreshTimelineSnapshot(at date: Date) {
+        let days = timelineDays(at: date)
+        let blocks = timelineBlocks(days: days, at: date)
+        cachedDays = days
+        cachedBlocks = blocks
+        lastDayCount = days.count
     }
 
     private func panScrubber(days: [Date], plotWidth: CGFloat, worldWidth: CGFloat, clampedX: CGFloat) -> some View {
@@ -3357,27 +3404,15 @@ private struct HomeHourTimeline: View {
             let thumbWidth = max(22, trackWidth * visibleRatio)
             let maxOffset = max(0, trackWidth - thumbWidth)
             let thumbX = maxOffset * progress
-            let tickCount = 17
 
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.primary.opacity(0.08))
-                    .frame(height: 4)
-
-                HStack(spacing: 0) {
-                    ForEach(0..<tickCount, id: \.self) { index in
-                        Rectangle()
-                            .fill(Color.primary.opacity(index % 4 == 0 ? 0.30 : 0.14))
-                            .frame(width: 1, height: index % 4 == 0 ? 4 : 2.5)
-                        if index < tickCount - 1 { Spacer(minLength: 0) }
-                    }
-                }
-                .padding(.horizontal, 5)
-                .frame(height: 4)
+                    .fill(Color.primary.opacity(0.07))
+                    .frame(height: 2)
 
                 Capsule()
-                    .fill(Color.primary.opacity(0.40))
-                    .frame(width: thumbWidth, height: 4)
+                    .fill(Color.primary.opacity(0.34))
+                    .frame(width: thumbWidth, height: 3)
                     .offset(x: thumbX)
             }
             .frame(maxHeight: .infinity, alignment: .center)
@@ -3413,11 +3448,12 @@ private struct HomeHourTimeline: View {
                 let isToday = beijingCalendar.isDateInToday(day)
                 VStack(spacing: 2) {
                     Text(weekdayLabel(day))
-                        .font(.system(size: 11, weight: .light))
-                        .foregroundStyle(.secondary)
+                        .font(AppType.caption(10.5, weight: .medium))
+                        .foregroundStyle(Color.secondary.opacity(0.82))
                     Text("\(beijingCalendar.component(.day, from: day))")
-                        .font(.system(size: 14, weight: isToday ? .regular : .ultraLight, design: .default))
-                        .foregroundStyle(isToday ? Color.primary : Color.primary.opacity(0.62))
+                        .font(.system(size: 14, weight: isToday ? .semibold : .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(isToday ? store.accentPreset.color : Color.primary.opacity(0.70))
                 }
                 .frame(width: dayWidth, height: headerHeight)
             }
@@ -3427,9 +3463,9 @@ private struct HomeHourTimeline: View {
     private func hourGutterView(hourHeight: CGFloat, hourStep: Int) -> some View {
         VStack(spacing: 0) {
             ForEach(0..<24, id: \.self) { hour in
-                Text(hour % hourStep == 0 ? String(format: "%02d", hour) : "")
-                    .font(.system(size: 11, weight: .light, design: .default))
-                    .foregroundStyle(.secondary)
+                Text(hour % hourStep == 0 ? String(format: "%02d:00", hour) : "")
+                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.secondary.opacity(0.78))
                     .frame(width: hourGutter - 8, height: hourHeight, alignment: .topTrailing)
             }
         }
@@ -3479,7 +3515,7 @@ private struct HomeHourTimeline: View {
             Group {
                 if height > 24 && laneWidth > 46 {
                     Text(block.title)
-                        .font(.system(size: 11, weight: .regular))
+                        .font(AppType.caption(10.5, weight: .medium))
                         .lineLimit(1)
                         .foregroundStyle(Color.primary.opacity(0.82))
                         .padding(.horizontal, 6)
@@ -3540,34 +3576,15 @@ private struct HomeHourTimeline: View {
         )
     }
 
-    private func dailyMinutes(blocks: [TimelineBlock], dayCount: Int) -> [Double] {
-        var totals = Array(repeating: 0.0, count: dayCount)
-        for block in blocks where !block.live {
-            totals[block.dayIndex] += block.durationHours * 60
-        }
-        return totals
-    }
-
     private func installScrollMonitor() {
         removeScrollMonitor()
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify]) { event in
+        // 捏合缩放只交给 SwiftUI 的 MagnificationGesture；若这里再监听 .magnify，
+        // 同一帧会被处理两次，比例与焦点互相覆盖，正是此前“发涩”的主要来源。
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { event in
             guard hovering else { return event }
-            if event.type == .magnify {
-                let factor = 1 + event.magnification
-                zoom(
-                    fromScaleX: scaleX,
-                    fromScaleY: scaleY,
-                    fromPan: pan,
-                    factorX: factor,
-                    factorY: factor,
-                    around: interactionState.hoverPoint,
-                    dayCount: timelineDays().count
-                )
-                return nil
-            }
             if event.modifierFlags.contains(.command) {
                 // ⌘+滚轮：水平缩放；加 Shift 只缩放垂直。
-                let factor = event.scrollingDeltaY > 0 ? 1.045 : 0.957
+                let factor = CGFloat(pow(1.01, Double(event.scrollingDeltaY)))
                 zoom(
                     fromScaleX: scaleX,
                     fromScaleY: scaleY,
@@ -3575,29 +3592,28 @@ private struct HomeHourTimeline: View {
                     factorX: event.modifierFlags.contains(.shift) ? 1 : factor,
                     factorY: event.modifierFlags.contains(.shift) ? factor : 1,
                     around: interactionState.hoverPoint,
-                    dayCount: timelineDays().count
+                    dayCount: lastDayCount
                 )
                 return nil
             }
-            // 普通滚轮：上下滚动直接缩放时间轴高度，左右滚动平移。
-            // 缩放幅度跟随滚动速度，滚动越快缩放越快，手感更自然。
-            if event.scrollingDeltaY != 0 {
-                let magnitude = min(abs(event.scrollingDeltaY), 60)
-                let factor = 1 + magnitude * 0.003 * (event.scrollingDeltaY > 0 ? 1 : -1)
-                zoom(
-                    fromScaleX: scaleX,
-                    fromScaleY: scaleY,
-                    fromPan: pan,
-                    factorX: 1,
-                    factorY: factor,
-                    around: interactionState.hoverPoint,
-                    dayCount: timelineDays().count
-                )
+
+            // 与 macOS 的系统习惯一致：普通双指滚动只平移，捏合才缩放。
+            // momentumPhase 产生的后续事件会自然形成惯性；到达边缘后把事件交还外层页面。
+            let multiplier: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 12
+            let horizontalDelta = event.modifierFlags.contains(.shift) && event.scrollingDeltaX == 0
+                ? event.scrollingDeltaY
+                : event.scrollingDeltaX
+            let proposed = CGSize(
+                width: pan.width + horizontalDelta * multiplier,
+                height: pan.height + (event.modifierFlags.contains(.shift) ? 0 : event.scrollingDeltaY * multiplier)
+            )
+            let next = clampedPan(proposed)
+            let moved = abs(next.width - pan.width) > 0.01 || abs(next.height - pan.height) > 0.01
+            if moved {
+                pan = next
+                return nil
             }
-            if event.scrollingDeltaX != 0 {
-                pan.width += event.scrollingDeltaX
-            }
-            return nil
+            return event
         }
     }
 
@@ -3738,7 +3754,7 @@ private struct HomeHourTimeline: View {
     }
 
     private func weekdayLabel(_ date: Date) -> String {
-        let names = ["日", "一", "二", "三", "四", "五", "六"]
+        let names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
         return names[beijingCalendar.component(.weekday, from: date) - 1]
     }
 
