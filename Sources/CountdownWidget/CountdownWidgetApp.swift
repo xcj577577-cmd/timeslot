@@ -208,17 +208,14 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 12) {
             HStack(spacing: 12) {
                 BrandMark(size: 32)
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        Text("Time")
-                            .font(.custom("AvenirNext-Regular", fixedSize: 23.5))
-                        Text("Slot")
-                            .font(.custom("AvenirNext-Medium", fixedSize: 23.5))
-                    }
-                    .tracking(-0.55)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("TIMESLOT")
+                        .font(.custom("Futura-Medium", fixedSize: 19))
+                        .tracking(1.25)
+                        .foregroundStyle(Color.primary.opacity(0.92))
                     Text(workspaceTitle)
-                        .font(.custom("AvenirNext-DemiBold", fixedSize: 9))
-                        .tracking(0.95)
+                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                        .tracking(1.05)
                         .foregroundStyle(.secondary)
                 }
             }
