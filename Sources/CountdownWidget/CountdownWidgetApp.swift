@@ -208,14 +208,14 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 12) {
             HStack(spacing: 12) {
                 BrandMark(size: 32)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .center, spacing: 1) {
                     Text("TIMESLOT")
                         .font(.custom("Futura-Medium", fixedSize: 19))
                         .tracking(1.25)
                         .foregroundStyle(Color.primary.opacity(0.92))
                     Text(workspaceTitle)
-                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
-                        .tracking(1.05)
+                        .font(.custom("Futura-Medium", fixedSize: 8.5))
+                        .tracking(1.25)
                         .foregroundStyle(.secondary)
                 }
             }
