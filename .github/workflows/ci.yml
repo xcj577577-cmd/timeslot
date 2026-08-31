@@ -18,3 +18,17 @@ jobs:
           xcodebuild -version
       - name: Run core tests
         run: swift test --disable-sandbox
+
+  windows-core:
+    name: Windows core tests
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Run core tests
+        run: dotnet test TimeSlot.sln

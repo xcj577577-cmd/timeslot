@@ -20,3 +20,8 @@ work/
 /tmp/xianz-*
 
 build/
+
+# Windows .NET 构建产物
+windows/**/bin/
+windows/**/obj/
+windows/*.user

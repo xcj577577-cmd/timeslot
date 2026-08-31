@@ -46,9 +46,9 @@
 ## 里程碑
 
 - **M0 契约与决策**（已完成）：本文档 + DATA_FORMAT.md。
-- **M1 核心内核**：C# 类库实现倒计时/番茄钟/统计规则 + 备份 JSON 读写，配对拍测试（用 macOS 导出的真实备份做 fixture）；加一个 CLI 校验工具。可在 CI 上完成。
-- **M2 三看板 UI**：首页/倒计时/专注按 graphite 设计语言在 WinUI 3 重绘。
-- **M3 桌面小组件**：透明置顶窗口方案（倒计时/番茄钟/本周目标），秒级刷新用文本直绘。
+- **M1 核心内核**（已完成，2026-08-31）：`windows/` 下的 C#/.NET 8 内核——`TimeSlotCore`（备份契约、倒计时数学、番茄钟引擎、Asia/Shanghai 周统计）、15 项 xUnit 测试（含与 Swift 端对拍的契约测试）、`TimeSlotCli validate` 校验工具；CI 增加 `windows-core` job 在 windows-latest 真机跑测试。已用 Swift `JSONEncoder`（app 导出同配置）编码的字节流验证 C# 端解码语义正确。**本机无 Windows 也可开发维护本层。**
+- **M2 三看板 UI**：首页/倒计时/专注按 graphite 设计语言在 WinUI 3 重绘。需要 Windows 运行时（Parallels Win11 ARM 或 CI 产物），本机暂无法验证，未开始。
+- **M3 桌面小组件**：透明置顶窗口方案（倒计时/番茄钟/本周目标），秒级刷新用文本直绘。依赖 M2。
 - **M4 分发**：代码签名证书 + MSIX；README 增加双平台下载。
 
 ## 风险与取舍
