@@ -9,17 +9,13 @@ on:
 jobs:
   test:
     name: Swift tests
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Show toolchain
         run: |
           swift --version
           xcodebuild -version
-      - name: Install Swift 6.0 toolchain
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: "6.0"
       - name: Run core tests
         run: swift test --disable-sandbox
 
