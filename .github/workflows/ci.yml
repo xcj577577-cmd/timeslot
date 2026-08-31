@@ -16,6 +16,10 @@ jobs:
         run: |
           swift --version
           xcodebuild -version
+      - name: Install Swift 6.0 toolchain
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
       - name: Run core tests
         run: swift test --disable-sandbox
 
