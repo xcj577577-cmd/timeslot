@@ -906,6 +906,18 @@ final class CountdownStore: ObservableObject {
         }
     }
 
+    func updateCurrentPomodoroPhaseDuration(minutes: Int) {
+        let durations = PomodoroDurationSettings(state: pomodoro)
+            .replacingDuration(for: pomodoro.phase, with: minutes)
+        updatePomodoroSettings(
+            focusMinutes: durations.focusMinutes,
+            shortBreakMinutes: durations.shortBreakMinutes,
+            longBreakMinutes: durations.longBreakMinutes,
+            roundsBeforeLongBreak: pomodoro.roundsBeforeLongBreak,
+            weeklyFocusGoalMinutes: pomodoro.weeklyFocusGoalMinutes
+        )
+    }
+
     func selectPomodoroForDesktopWidget() {
         savePomodoro()
         if widgetDisplayMode == .both {

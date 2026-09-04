@@ -708,17 +708,11 @@ struct PomodoroView: View {
 
     private var quickPresetPills: some View {
         HStack(spacing: 6) {
-            ForEach([25, 45, 60, 90], id: \.self) { mins in
-                let isCurrent = state.focusMinutes == mins
+            ForEach(PomodoroPresets.quick(for: state.phase), id: \.self) { mins in
+                let isCurrent = Int(state.duration(for: state.phase) / 60) == mins
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        store.updatePomodoroSettings(
-                            focusMinutes: mins,
-                            shortBreakMinutes: state.shortBreakMinutes,
-                            longBreakMinutes: state.longBreakMinutes,
-                            roundsBeforeLongBreak: state.roundsBeforeLongBreak,
-                            weeklyFocusGoalMinutes: state.weeklyFocusGoalMinutes
-                        )
+                        store.updateCurrentPomodoroPhaseDuration(minutes: mins)
                     }
                 } label: {
                     Text("\(mins)分")

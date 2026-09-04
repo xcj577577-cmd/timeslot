@@ -278,6 +278,14 @@ enum PomodoroPresets {
     static let shortBreak = [3, 5, 10, 15]
     static let longBreak = [10, 15, 20, 30]
     static let rounds = [2, 3, 4, 5, 6]
+
+    static func quick(for phase: PomodoroPhase) -> [Int] {
+        switch phase {
+        case .focus: return [25, 45, 60, 90]
+        case .shortBreak: return shortBreak
+        case .longBreak: return longBreak
+        }
+    }
 }
 
 enum PomodoroRecordStatus: String, Codable {
@@ -644,6 +652,28 @@ struct PomodoroState: Codable, Equatable {
     /// 系统可能在 endDate 之后很久才把 App 唤醒；历史仍应截止在计划结束时刻。
     func completionDate(whenObservedAt date: Date) -> Date {
         min(date, endDate ?? date)
+    }
+}
+
+struct PomodoroDurationSettings: Equatable {
+    var focusMinutes: Int
+    var shortBreakMinutes: Int
+    var longBreakMinutes: Int
+
+    init(state: PomodoroState) {
+        focusMinutes = state.focusMinutes
+        shortBreakMinutes = state.shortBreakMinutes
+        longBreakMinutes = state.longBreakMinutes
+    }
+
+    func replacingDuration(for phase: PomodoroPhase, with minutes: Int) -> Self {
+        var updated = self
+        switch phase {
+        case .focus: updated.focusMinutes = minutes
+        case .shortBreak: updated.shortBreakMinutes = minutes
+        case .longBreak: updated.longBreakMinutes = minutes
+        }
+        return updated
     }
 }
 

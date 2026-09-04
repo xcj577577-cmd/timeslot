@@ -168,6 +168,26 @@ final class TimeSlotCoreTests: XCTestCase {
         XCTAssertTrue(PomodoroTimerModePolicy.canSwitchMode(for: state))
     }
 
+    func testPomodoroQuickPresetsFollowCurrentPhase() {
+        XCTAssertEqual(PomodoroPresets.quick(for: .focus), [25, 45, 60, 90])
+        XCTAssertEqual(PomodoroPresets.quick(for: .shortBreak), [3, 5, 10, 15])
+        XCTAssertEqual(PomodoroPresets.quick(for: .longBreak), [10, 15, 20, 30])
+    }
+
+    func testPomodoroDurationSettingsReplacesOnlyCurrentPhase() {
+        var state = PomodoroState()
+        state.focusMinutes = 60
+        state.shortBreakMinutes = 5
+        state.longBreakMinutes = 15
+
+        let updated = PomodoroDurationSettings(state: state)
+            .replacingDuration(for: .shortBreak, with: 10)
+
+        XCTAssertEqual(updated.focusMinutes, 60)
+        XCTAssertEqual(updated.shortBreakMinutes, 10)
+        XCTAssertEqual(updated.longBreakMinutes, 15)
+    }
+
     func testWeeklyFocusGoalDefaultsToTenHours() {
         XCTAssertEqual(PomodoroState().weeklyFocusGoalMinutes, 10 * 60)
     }
