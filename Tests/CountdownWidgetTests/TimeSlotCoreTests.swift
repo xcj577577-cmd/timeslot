@@ -129,6 +129,45 @@ final class TimeSlotCoreTests: XCTestCase {
         XCTAssertEqual(state.stopwatchElapsed(at: Date()), 0, accuracy: 0.001)
     }
 
+    func testPomodoroTimerModePolicyKeepsActiveStopwatchVisible() {
+        let now = Date(timeIntervalSinceReferenceDate: 7_000_000)
+        var state = PomodoroState()
+        state.stopwatchRunning = true
+        state.stopwatchSessionStartedAt = now
+        state.stopwatchActiveStartedAt = now
+
+        XCTAssertEqual(
+            PomodoroTimerModePolicy.initialMode(storedMode: .countdown, state: state),
+            .stopwatch
+        )
+        XCTAssertFalse(PomodoroTimerModePolicy.canSwitchMode(for: state))
+    }
+
+    func testPomodoroTimerModePolicyKeepsActiveCountdownVisible() {
+        let now = Date(timeIntervalSinceReferenceDate: 8_000_000)
+        var state = PomodoroState()
+        state.isRunning = true
+        state.sessionStartedAt = now
+        state.activeStartedAt = now
+        state.endDate = now.addingTimeInterval(25 * 60)
+
+        XCTAssertEqual(
+            PomodoroTimerModePolicy.initialMode(storedMode: .stopwatch, state: state),
+            .countdown
+        )
+        XCTAssertFalse(PomodoroTimerModePolicy.canSwitchMode(for: state))
+    }
+
+    func testPomodoroTimerModePolicyUsesPreferenceOnlyWhenIdle() {
+        let state = PomodoroState()
+
+        XCTAssertEqual(
+            PomodoroTimerModePolicy.initialMode(storedMode: .stopwatch, state: state),
+            .stopwatch
+        )
+        XCTAssertTrue(PomodoroTimerModePolicy.canSwitchMode(for: state))
+    }
+
     func testWeeklyFocusGoalDefaultsToTenHours() {
         XCTAssertEqual(PomodoroState().weeklyFocusGoalMinutes, 10 * 60)
     }

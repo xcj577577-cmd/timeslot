@@ -59,15 +59,16 @@ struct PomodoroView: View {
         _selectedWeekStart = State(
             initialValue: PomodoroHistoryRangePolicy.weekStart(containing: Date())
         )
-        // 正计时进行中时，重启应用也要回到正计时页面，避免计时器在后台偷偷走。
         let storedMode = countdownDefaults
             .string(forKey: "pomodoroTimerMode")
             .flatMap(PomodoroTimerMode.init(rawValue:))
-        if store.pomodoro.isStopwatchActive {
-            _timerMode = State(initialValue: .stopwatch)
-        } else {
-            _timerMode = State(initialValue: storedMode ?? .countdown)
-        }
+        // 未结束的会话优先于上次浏览偏好，避免重启后显示另一种计时器。
+        _timerMode = State(
+            initialValue: PomodoroTimerModePolicy.initialMode(
+                storedMode: storedMode,
+                state: store.pomodoro
+            )
+        )
     }
 
     private var state: PomodoroState { store.pomodoro }
@@ -583,6 +584,12 @@ struct PomodoroView: View {
             )
             .font(AppType.ui(Typo.footnote, .medium))
             .frame(width: 240)
+            .disabled(!PomodoroTimerModePolicy.canSwitchMode(for: state))
+            .help(
+                PomodoroTimerModePolicy.canSwitchMode(for: state)
+                    ? "切换计时方式"
+                    : "停止或重置当前计时后可切换"
+            )
 
             if timerMode == .countdown && !state.isRunning {
                 quickPresetPills

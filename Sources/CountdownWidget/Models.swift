@@ -701,6 +701,30 @@ enum PomodoroTimerMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// 保证界面展示的计时方式与尚未结束的会话一致，避免一个计时器在另一页后台运行。
+enum PomodoroTimerModePolicy {
+    static func activeMode(for state: PomodoroState) -> PomodoroTimerMode? {
+        if state.isStopwatchActive {
+            return .stopwatch
+        }
+        if state.isRunning || state.sessionStartedAt != nil {
+            return .countdown
+        }
+        return nil
+    }
+
+    static func initialMode(
+        storedMode: PomodoroTimerMode?,
+        state: PomodoroState
+    ) -> PomodoroTimerMode {
+        activeMode(for: state) ?? storedMode ?? .countdown
+    }
+
+    static func canSwitchMode(for state: PomodoroState) -> Bool {
+        activeMode(for: state) == nil
+    }
+}
+
 // MARK: - 数据备份
 
 /// 完整数据备份（导出/恢复用）。schemaVersion 预留给未来迁移。
