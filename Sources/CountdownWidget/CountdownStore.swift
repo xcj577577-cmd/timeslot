@@ -202,8 +202,10 @@ final class CountdownStore: ObservableObject {
                 self?.widgetSyncState = .ready(state.updatedAt)
             }
             // 只有原子文件写完后才请求 WidgetKit 重建，避免扩展先读到旧快照。
-            for kind in widgetKinds {
-                WidgetCenter.shared.reloadTimelines(ofKind: kind)
+            // 一次 reloadAllTimelines 覆盖固定、可配置和周目标组件，避免逐 kind 请求
+            // 在 WidgetKit 节流时只更新到其中一部分。
+            if !widgetKinds.isEmpty {
+                WidgetCenter.shared.reloadAllTimelines()
             }
         }
     }
@@ -1360,9 +1362,7 @@ final class CountdownStore: ObservableObject {
     }
 
     private func performWidgetReload() {
-        for kind in Self.widgetKinds {
-            WidgetCenter.shared.reloadTimelines(ofKind: kind)
-        }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - 通知调度（番茄钟阶段 + 倒计时完成）
