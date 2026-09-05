@@ -1267,7 +1267,8 @@ final class CountdownStore: ObservableObject {
     }
 
     /// Store 只在需要观察状态跃迁时运行定时器：番茄钟运行中或倒计时临近到期按秒检查，
-    /// 远期目标每分钟检查，完全空闲时停止定时器。秒级读数由各自的 TimelineView 负责。
+    /// 正计时运行中每分钟做一次小组件同步，远期目标每分钟检查，完全空闲时停止定时器。
+    /// 秒级读数由各自的 TimelineView / WidgetKit timer 样式负责。
     private func configureTimerIfNeeded(at date: Date = Date()) {
         let nearestCountdown = items
             .filter { !$0.isPaused }
@@ -1277,6 +1278,9 @@ final class CountdownStore: ObservableObject {
         let desiredInterval: TimeInterval?
         if pomodoro.isRunning {
             desiredInterval = 1
+        } else if pomodoro.stopwatchRunning {
+            // 正计时不需要每秒驱动主应用，只需保持学习时长小组件的分钟级快照更新。
+            desiredInterval = 60
         } else if let nearestCountdown {
             desiredInterval = nearestCountdown <= 120 ? 1 : 60
         } else {
@@ -1298,9 +1302,11 @@ final class CountdownStore: ObservableObject {
                 self.handlePomodoroTick(at: date)
                 self.checkCountdownCompletions(at: date)
                 self.configureTimerIfNeeded(at: date)
-                // 兜底同步：即使扩展进程的刷新请求被系统合并或错过，
-                // 应用只要开着，每 4 分钟也会主动让小组件重新读取一次状态。
-                if date.timeIntervalSince(self.lastWidgetHealthReload) >= 240 {
+                // 兜底同步：学习计时进行时每分钟刷新一次，让“本周专注/学习时长”
+                // 跟上正在增长的当前会话；空闲时仍保持低频，避免 WidgetKit 被频繁唤醒。
+                let healthReloadInterval: TimeInterval =
+                    (self.pomodoro.isRunning || self.pomodoro.stopwatchRunning) ? 60 : 240
+                if date.timeIntervalSince(self.lastWidgetHealthReload) >= healthReloadInterval {
                     self.lastWidgetHealthReload = date
                     self.performWidgetReload()
                 }

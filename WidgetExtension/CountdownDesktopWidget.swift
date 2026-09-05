@@ -758,12 +758,20 @@ enum CountdownEntryFactory {
         let hasActivePomodoro = snapshot.pomodoro?.isRunning == true
             && (snapshot.pomodoro?.endDate ?? .distantPast) > now
         let hasActiveTimer = hasActivePomodoro || snapshot.pomodoro?.stopwatchRunning == true
-        let fallbackInterval: TimeInterval = hasActiveTimer ? 15 * 60 : 60 * 60
+        let isActiveFocusSummary = snapshot.displayMode == "weekly"
+            && (hasActivePomodoro || snapshot.pomodoro?.stopwatchRunning == true)
+        // 学习时长是静态格式化文本，不能像 Text(..., style: .timer) 那样自行走字。
+        // 活跃时给周目标小组件一分钟一个时间线入口；其他模式继续使用低频兜底，
+        // 避免把主应用的降负荷优化重新变成高频全量刷新。
+        let fallbackInterval: TimeInterval = isActiveFocusSummary
+            ? 60
+            : (hasActiveTimer ? 15 * 60 : 60 * 60)
         let fallbackDate = now.addingTimeInterval(fallbackInterval)
 
-        // 数字走秒交给 Text(..., style: .timer)，时间线只负责跨越“阶段结束/目标到达”
-        // 这类语义边界。应用内状态变化仍会主动 reloadTimelines；这里用 15/60 分钟
-        // 做低频兜底，避免高频刷新耗尽 WidgetKit 预算后反而长期不更新。
+        // 数字走秒交给 Text(..., style: .timer)，普通模式的时间线只负责跨越
+        // “阶段结束/目标到达”这类语义边界；周目标活跃时额外保留一分钟入口，
+        // 让格式化后的累计学习时长跟上当前会话。其他场景仍用 15/60 分钟低频兜底，
+        // 避免高频刷新耗尽 WidgetKit 预算后反而长期不更新。
         var dates = [now]
         if let endDate = snapshot.pomodoro?.endDate,
            endDate > now,
