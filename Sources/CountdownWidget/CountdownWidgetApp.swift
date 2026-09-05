@@ -2554,7 +2554,6 @@ struct CountdownHero: View {
     let item: CountdownItem
     let accent: Color
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @ViewBuilder
     var body: some View {
@@ -2563,7 +2562,10 @@ struct CountdownHero: View {
             // 已暂停或已完成的目标不会再变化，不需要保留秒级时间线。
             card(remaining: remaining)
         } else {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
+            // 远期目标的卡片仍显示天/小时/分钟，没必要每秒重排整张卡。
+            // 临近目标时恢复秒级，保留最后阶段的精确反馈并降低长期运行负荷。
+            let refreshInterval: TimeInterval = remaining <= 12 * 60 * 60 ? 1 : 60
+            TimelineView(.periodic(from: .now, by: refreshInterval)) { context in
                 card(remaining: item.remaining(at: context.date))
             }
         }
@@ -2618,7 +2620,6 @@ struct CountdownHero: View {
                     Image(systemName: isDone ? "checkmark.circle.fill" : (item.isPaused ? "pause.fill" : "timer"))
                         .font(AppType.ui(Typo.icon, .medium))
                         .foregroundStyle(accent)
-                        .symbolEffect(.pulse, isActive: !isDone && !item.isPaused && !reduceMotion)
                 }
             }
 

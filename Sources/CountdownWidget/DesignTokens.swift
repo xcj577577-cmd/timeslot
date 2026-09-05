@@ -895,7 +895,6 @@ struct TimeSlotGlowMeter: View {
             .padding(.vertical, 7)
             .background(color.opacity(0.12), in: Capsule())
             .overlay(Capsule().stroke(color.opacity(0.28), lineWidth: 1))
-            .symbolEffect(.pulse, isActive: isRunning && !reduceMotion)
 
             // 超大辉光数字
             Text(timeText)
