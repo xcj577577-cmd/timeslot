@@ -668,6 +668,8 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: Space.l) {
             homeCommandDeck
 
+            homeVisualOverview
+
             HStack(alignment: .top, spacing: Space.xl) {
                 homeCalendarBoard
                     .frame(maxWidth: .infinity)
@@ -676,11 +678,82 @@ struct ContentView: View {
                     .frame(width: 300)
             }
 
-            homeTrendCard
         }
         .padding(.horizontal, 4)
         .padding(.bottom, Space.xl)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var homeVisualOverview: some View {
+        let teal = Color(hex: "319F98")
+        let blue = Color(hex: "628CD4")
+        let gold = Color(hex: "C69A48")
+        let points = weekTrendPoints
+        let progress = min(1, homeWeekFocusSeconds / max(1, Double(store.pomodoro.weeklyFocusGoalMinutes * 60)))
+        return HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("今日投入", systemImage: "sun.max.fill").foregroundStyle(teal)
+                Text(homeFocusDurationText(homeTodayFocusSeconds))
+                    .font(AppType.ui(25, .semibold)).monospacedDigit()
+                let tasks = todayTaskBreakdown
+                if tasks.isEmpty {
+                    Text("保存一次专注，点亮今天")
+                        .font(AppType.caption()).foregroundStyle(.secondary)
+                    Capsule().fill(teal.opacity(0.15)).frame(height: 12)
+                } else {
+                    let total = max(1, tasks.reduce(0) { $0 + $1.minutes })
+                    GeometryReader { geometry in
+                        HStack(spacing: 0) {
+                            ForEach(tasks, id: \.title) { task in
+                                Rectangle().fill(task.color)
+                                    .frame(width: geometry.size.width * task.minutes / total)
+                                    .help("\(task.title) · \(homeFocusDurationText(task.minutes * 60))")
+                            }
+                        }.clipShape(Capsule())
+                    }.frame(height: 12)
+                    Text(tasks.map(\.title).joined(separator: " · "))
+                        .font(AppType.caption()).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+            .padding(18).background(teal.opacity(colorScheme == .dark ? 0.16 : 0.09), in: RoundedRectangle(cornerRadius: 18))
+
+            VStack(alignment: .leading, spacing: 12) {
+                Label("本周节奏", systemImage: "chart.bar.fill").foregroundStyle(blue)
+                Chart(points, id: \.day) { point in
+                    BarMark(x: .value("日期", point.day, unit: .day), y: .value("分钟", point.minutes), width: .ratio(0.6))
+                        .foregroundStyle((beijingCalendar.isDateInToday(point.day) ? gold : blue).gradient)
+                        .cornerRadius(3)
+                        .accessibilityLabel("\(homeWeekdayLetter(point.day)) · \(homeFocusDurationText(point.minutes * 60))")
+                }
+                .chartYAxis(.hidden)
+                .chartXAxis { AxisMarks(values: points.map(\.day)) { value in AxisValueLabel { if let day = value.as(Date.self) { Text(homeWeekdayLetter(day)).font(AppType.caption(10)) } } } }
+                .frame(height: 83)
+                Text("周一至周日 · 金色标记今天").font(AppType.caption(10)).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+            .padding(18).background(blue.opacity(colorScheme == .dark ? 0.16 : 0.09), in: RoundedRectangle(cornerRadius: 18))
+
+            VStack(alignment: .leading, spacing: 12) {
+                Label("本周目标", systemImage: "target").foregroundStyle(gold)
+                HStack(spacing: 16) {
+                    ZStack {
+                        Circle().stroke(gold.opacity(0.18), lineWidth: 8)
+                        Circle().trim(from: 0, to: progress).stroke(gold.gradient, style: StrokeStyle(lineWidth: 8, lineCap: .round)).rotationEffect(.degrees(-90))
+                        Text("\(Int(progress * 100))%")
+                            .font(AppType.ui(20, .semibold)).monospacedDigit()
+                    }.frame(width: 72, height: 72)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(String(format: "%.1f 小时", homeWeekFocusSeconds / 3600)).font(AppType.ui(16, .semibold))
+                        Text("目标 \(store.pomodoro.weeklyFocusGoalMinutes / 60) 小时").font(AppType.caption()).foregroundStyle(.secondary)
+                    }
+                }
+                Text("已保存记录 · 含番茄钟与正计时").font(AppType.caption(10)).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+            .padding(18).background(gold.opacity(colorScheme == .dark ? 0.16 : 0.09), in: RoundedRectangle(cornerRadius: 18))
+        }
+        .font(AppType.ui(12, .medium))
     }
 
     private var homeCommandDeck: some View {
@@ -977,6 +1050,7 @@ struct ContentView: View {
                 Spacer()
                 Text(value)
                     .font(AppType.ui(15, .medium))
+                    .foregroundStyle(color)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
