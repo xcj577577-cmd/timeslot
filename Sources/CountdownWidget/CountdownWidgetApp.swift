@@ -1674,20 +1674,18 @@ struct ContentView: View {
                     .padding(.bottom, Space.xxl)
                 } else if let selected = store.selectedItem {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .top, spacing: 0) {
                             CountdownHero(item: selected, accent: accent)
+                                .frame(maxWidth: .infinity, minHeight: 430)
 
                             Divider()
                                 .padding(.vertical, Space.xl)
 
-                            CountdownTimelineCard(item: selected, accent: accent)
-
-                            Divider()
-                                .padding(.vertical, Space.l)
-
-                            infoSection(selected)
+                            countdownInfoPanel(selected)
+                                .frame(width: 272)
                         }
-                        .padding(.horizontal, Space.xl)
+                        .frame(maxWidth: 1040)
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, Space.xxl)
                         .padding(.bottom, Space.xxl)
                     }
@@ -1718,6 +1716,58 @@ struct ContentView: View {
                 }
             }
         }
+
+    private func countdownInfoPanel(_ item: CountdownItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Space.s) {
+                Text("目标时刻")
+                    .font(AppType.ui(Typo.footnote, .medium))
+                    .foregroundStyle(.secondary)
+                Text(beijingDateString(item.targetDate, dateStyle: .long, timeStyle: .omitted))
+                    .font(AppType.pageTitle(18))
+                Text(beijingDateString(item.targetDate, dateStyle: .omitted, timeStyle: .shortened) + " · 北京时间")
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider().padding(.vertical, Space.m)
+            CountdownTimelineCard(item: item, accent: accent)
+            Divider().padding(.vertical, Space.m)
+
+            VStack(alignment: .leading, spacing: Space.m) {
+                countdownStatusRow(
+                    title: "运行状态",
+                    value: item.isPaused ? "已暂停" : (item.remaining(at: Date()) > 0 ? "进行中" : "已到达"),
+                    icon: item.isPaused ? "pause.fill" : "bolt.fill"
+                )
+                countdownStatusRow(
+                    title: "桌面小组件",
+                    value: item.isPinned ? "当前展示" : "未展示",
+                    icon: item.isPinned ? "rectangle.3.group.fill" : "rectangle.3.group"
+                )
+            }
+        }
+        .padding(.vertical, Space.xl)
+        .padding(.horizontal, Space.l)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func countdownStatusRow(title: String, value: String, icon: String) -> some View {
+        HStack(spacing: Space.m) {
+            Image(systemName: icon)
+                .font(AppType.ui(12, .medium))
+                .foregroundStyle(accent)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(AppType.ui(Typo.footnote, .medium))
+            }
+            Spacer(minLength: 0)
+        }
+    }
 
     private func infoSection(_ item: CountdownItem) -> some View {
         VStack(alignment: .leading, spacing: Space.l) {
@@ -2653,9 +2703,8 @@ struct CountdownHero: View {
         let isDone = remaining <= 0
         let percent = Int((progressValue(remaining) * 100).rounded())
 
-        return VStack(alignment: .leading, spacing: 28) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: Space.s) {
+        return VStack(spacing: 30) {
+            VStack(spacing: Space.m) {
                     HStack(spacing: Space.s) {
                         Text(item.isPaused ? "倒计时已暂停" : (isDone ? "目标已到达" : "距离目标还有"))
                             .font(AppType.ui(Typo.body, .medium))
@@ -2687,11 +2736,9 @@ struct CountdownHero: View {
                     } else {
                         modularTimeGrid(remaining: remaining)
                     }
-                }
-
             }
 
-            VStack(alignment: .leading, spacing: Space.s) {
+            VStack(spacing: Space.s) {
                 HStack {
                     Text("进度 \(percent)%")
                         .font(AppType.caption(12, weight: .semibold))
@@ -2711,17 +2758,14 @@ struct CountdownHero: View {
                     animatesProgress: false
                 )
             }
+            .frame(maxWidth: 520)
 
-            HStack {
-                Label(beijingDateString(item.targetDate, dateStyle: .complete, timeStyle: .shortened), systemImage: "calendar")
-                    .font(AppType.ui(Typo.footnote, .medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("北京时间 (UTC+8)")
-                    .font(AppType.caption())
-                    .foregroundStyle(.secondary)
-            }
+            Text(isDone ? "这一刻已经抵达" : "保持节奏，时间正在向目标收拢")
+                .font(AppType.caption())
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, minHeight: 390, alignment: .center)
+        .padding(.horizontal, Space.xl)
         .overlay {
             ConfettiEffectView(isActive: isDone)
         }
@@ -2740,7 +2784,7 @@ struct CountdownHero: View {
         let minutes = (total % 3600) / 60
         let seconds = total % 60
 
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
             if days > 0 {
                 countdownUnit(String(days), "天")
             }
@@ -2753,9 +2797,9 @@ struct CountdownHero: View {
     private func countdownUnit(_ value: String, _ label: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(value)
-                .font(AppType.timer(54))
+                .font(AppType.timer(68))
                 .monospacedDigit()
-                .tracking(-1.2)
+                .tracking(-1.8)
             Text(label)
                 .font(AppType.caption(11, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -2776,9 +2820,8 @@ struct CountdownTimelineCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.m) {
-            Text("时间里程碑")
+            Text("时间轨道")
                 .font(AppType.ui(Typo.body, .medium))
-                .tracking(Tracking.heading)
                 .foregroundStyle(.secondary)
 
             let initialRemaining = item.remaining(at: Date())
@@ -2801,7 +2844,7 @@ struct CountdownTimelineCard: View {
         let elapsedDays = Int(elapsed / 86400)
         let remainingDays = Int(ceil(remaining / 86400))
 
-        return VStack(spacing: 10) {
+        return VStack(spacing: 12) {
             GeometryReader { proxy in
                 let progress = min(1, max(0, elapsed / total))
                 ZStack(alignment: .leading) {
@@ -2810,9 +2853,9 @@ struct CountdownTimelineCard: View {
                     Circle().fill(accent).frame(width: 11, height: 11).offset(x: max(0, proxy.size.width * progress - 5.5))
                 }.frame(maxHeight: .infinity)
             }.frame(height: 11)
-            HStack {
+            HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("起始点")
+                Text("建立目标")
                     .font(AppType.caption())
                     .foregroundStyle(.secondary)
                 Text(beijingDateString(item.createdAt, dateStyle: .abbreviated, timeStyle: .omitted))
@@ -2821,22 +2864,17 @@ struct CountdownTimelineCard: View {
 
             Spacer()
 
-            VStack(spacing: 2) {
-                Text("已过去 \(elapsedDays) 天 · 剩余 \(max(0, remainingDays)) 天")
-                    .font(AppType.caption(11.5, weight: .medium))
-                    .foregroundStyle(.primary.opacity(0.72))
-            }
-
-            Spacer()
-
             VStack(alignment: .trailing, spacing: 2) {
-                Text("目标点")
+                Text("截止时刻")
                     .font(AppType.caption())
                     .foregroundStyle(.secondary)
                 Text(beijingDateString(item.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))
                     .font(AppType.ui(Typo.footnote, .medium))
             }
             }
+            Text("已行进 \(elapsedDays) 天 · 还剩 \(max(0, remainingDays)) 天")
+                .font(AppType.caption(11, weight: .medium))
+                .foregroundStyle(accent)
         }
     }
 }
