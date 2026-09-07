@@ -1601,7 +1601,7 @@ struct ContentView: View {
 
     private var countdownDetail: some View {
         return VStack(alignment: .leading, spacing: 0) {
-                HStack {
+                HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("倒计时")
                             .font(AppType.caption())
@@ -1613,16 +1613,19 @@ struct ContentView: View {
                     }
                     Spacer()
 
-                    TimeSlotSegmentedControl(
-                        options: CountdownViewMode.allCases.map {
-                            SegmentOption(id: $0.rawValue, title: $0.rawValue, value: $0)
-                        },
-                        selection: $countdownViewMode,
-                        tint: accent
-                    )
-                    .frame(width: 168)
-
                     if let selected = store.selectedItem {
+                        HStack(spacing: Space.s) {
+                            Circle()
+                                .fill(selected.isPaused ? Color.secondary.opacity(0.42) : Color.primary)
+                                .frame(width: 6, height: 6)
+                            Text(selected.isPaused ? "已暂停" : "正在倒计时")
+                                .font(AppType.caption(weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, Space.s)
+                        .padding(.vertical, Space.xs)
+                        .background(Surface.nested, in: Capsule())
+
                         QuickActionButton(
                             title: selected.isPinned ? "已固定" : "固定到桌面",
                             icon: selected.isPinned ? "checkmark.circle.fill" : "rectangle.on.rectangle",
@@ -1654,7 +1657,18 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, Space.xxl)
                 .padding(.top, Space.xxl)
-                .padding(.bottom, Space.xl)
+                .padding(.bottom, Space.l)
+
+                TimeSlotSegmentedControl(
+                    options: CountdownViewMode.allCases.map {
+                        SegmentOption(id: $0.rawValue, title: $0.rawValue, value: $0)
+                    },
+                    selection: $countdownViewMode,
+                    tint: accent
+                )
+                .frame(width: 220)
+                .padding(.horizontal, Space.xxl)
+                .padding(.bottom, Space.l)
 
                 if countdownViewMode == .roadmap {
                     CountdownRoadmapTimelineView(
@@ -2702,43 +2716,37 @@ struct CountdownHero: View {
     private func card(remaining: TimeInterval) -> some View {
         let isDone = remaining <= 0
         let percent = Int((progressValue(remaining) * 100).rounded())
+        let isLive = !item.isPaused && !isDone
 
-        return VStack(spacing: 30) {
-            VStack(spacing: Space.m) {
-                    HStack(spacing: Space.s) {
-                        Text(item.isPaused ? "倒计时已暂停" : (isDone ? "目标已到达" : "距离目标还有"))
-                            .font(AppType.ui(Typo.body, .medium))
-                            .foregroundStyle(.secondary)
+        return VStack(spacing: Space.l) {
+            if isDone {
+                VStack(spacing: Space.s) {
+                    Image(systemName: "flag.checkered.circle.fill")
+                        .font(AppType.ui(38))
+                        .foregroundStyle(Color.green)
+                    Text("目标达成")
+                        .font(AppType.title(Typo.sheetTitle))
+                    Text("已于 \(beijingDateString(item.targetDate, dateStyle: .long, timeStyle: .shortened)) 到达")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("距离目标还有")
+                    .font(AppType.ui(Typo.body, .medium))
+                    .foregroundStyle(.secondary)
 
-                        StatusPillBadge(
-                            title: item.isPaused ? "已暂停" : (isDone ? "已完成" : "进行中 \(percent)%"),
-                            icon: item.isPaused ? "pause.circle" : (isDone ? "checkmark.circle.fill" : nil),
-                            color: item.isPaused ? .secondary : (isDone ? .green : accent),
-                            isPulsing: !item.isPaused && !isDone
-                        )
-                    }
-
-                    if isDone {
-                        HStack(spacing: Space.m) {
-                            Image(systemName: "flag.checkered.circle.fill")
-                                .font(AppType.ui(38))
-                                .foregroundStyle(Color.green)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("目标达成")
-                                    .font(AppType.title(Typo.sheetTitle))
-                                    .foregroundStyle(.primary)
-                                Text("已于 \(beijingDateString(item.targetDate, dateStyle: .long, timeStyle: .shortened)) 到达")
-                                    .font(AppType.caption())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, Space.s)
-                    } else {
-                        modularTimeGrid(remaining: remaining)
-                    }
+                TimeSlotGlowMeter(
+                    progress: progressValue(remaining),
+                    color: accent,
+                    phaseTitle: item.isPaused ? "已暂停" : "倒计时",
+                    phaseIcon: item.isPaused ? "pause.fill" : "calendar.badge.clock",
+                    timeText: countdownReadout(remaining),
+                    isRunning: isLive,
+                    glowBarWidth: 300
+                )
             }
 
-            VStack(spacing: Space.s) {
+            if !isDone {
                 HStack {
                     Text("进度 \(percent)%")
                         .font(AppType.caption(12, weight: .semibold))
@@ -2748,17 +2756,8 @@ struct CountdownHero: View {
                         .font(AppType.caption(12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-
-                TimeSlotProgressBar(
-                    progress: progressValue(remaining),
-                    color: accent,
-                height: 7,
-                    showsKnob: true,
-                    showsMilestones: true,
-                    animatesProgress: false
-                )
+                .frame(maxWidth: 300)
             }
-            .frame(maxWidth: 520)
 
             Text(isDone ? "这一刻已经抵达" : "保持节奏，时间正在向目标收拢")
                 .font(AppType.caption())
@@ -2771,39 +2770,24 @@ struct CountdownHero: View {
         }
     }
 
-    private var formattedTotalDays: String {
-        let days = Int(ceil(item.totalDuration / 86400))
-        return "\(max(1, days)) 天"
-    }
-
-    @ViewBuilder
-    private func modularTimeGrid(remaining: TimeInterval) -> some View {
+    private func countdownReadout(_ remaining: TimeInterval) -> String {
         let total = max(0, Int(ceil(remaining)))
         let days = total / 86400
         let hours = (total % 86400) / 3600
         let minutes = (total % 3600) / 60
         let seconds = total % 60
-
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
-            if days > 0 {
-                countdownUnit(String(days), "天")
-            }
-            countdownUnit(String(format: "%02d", hours), "时")
-            countdownUnit(String(format: "%02d", minutes), "分")
-            countdownUnit(String(format: "%02d", seconds), "秒")
+        if days > 0 {
+            return String(format: "%d天 %02d:%02d", days, hours, minutes)
         }
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    private func countdownUnit(_ value: String, _ label: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(value)
-                .font(AppType.timer(68))
-                .monospacedDigit()
-                .tracking(-1.8)
-            Text(label)
-                .font(AppType.caption(11, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
+    private var formattedTotalDays: String {
+        let days = Int(ceil(item.totalDuration / 86400))
+        return "\(max(1, days)) 天"
     }
 
     private func progressValue(_ remaining: TimeInterval) -> CGFloat {
