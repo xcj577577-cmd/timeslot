@@ -686,11 +686,47 @@ struct ContentView: View {
 
     private var homeVisualOverview: some View {
         let teal = Color(hex: "319F98")
-        let blue = Color(hex: "628CD4")
         let gold = Color(hex: "C69A48")
         let points = weekTrendPoints
         let progress = min(1, homeWeekFocusSeconds / max(1, Double(store.pomodoro.weeklyFocusGoalMinutes * 60)))
         return HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Label("本周学习节奏", systemImage: "chart.bar.fill").foregroundStyle(teal)
+                    Spacer()
+                    Text("周一至周日").foregroundStyle(.secondary)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(homeFocusDurationText(homeWeekFocusSeconds))
+                        .font(AppType.ui(30, .semibold)).monospacedDigit()
+                    Text("已记录").font(AppType.caption()).foregroundStyle(.secondary)
+                }
+                Chart(points, id: \.day) { point in
+                    BarMark(x: .value("日期", point.day, unit: .day), y: .value("小时", point.minutes / 60), width: .ratio(0.55))
+                        .foregroundStyle((beijingCalendar.isDateInToday(point.day) ? gold : teal).gradient)
+                        .cornerRadius(4)
+                        .accessibilityLabel("\(homeWeekdayLetter(point.day)) · \(homeFocusDurationText(point.minutes * 60))")
+                }
+                .chartYScale(domain: 0...max(1, (points.map { $0.minutes / 60 }.max() ?? 0) * 1.15))
+                .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                    AxisGridLine().foregroundStyle(Color.primary.opacity(0.06))
+                    AxisValueLabel { if let hours = value.as(Double.self) { Text(String(format: "%gh", hours)).font(AppType.caption(10)) } }
+                } }
+                .chartXAxis { AxisMarks(values: points.map(\.day)) { value in AxisValueLabel { if let day = value.as(Date.self) { Text(homeWeekdayLetter(day)).font(AppType.caption(11)) } } } }
+                .frame(height: 150)
+                HStack(spacing: 6) {
+                    Circle().fill(teal).frame(width: 6, height: 6)
+                    Text("已保存的专注")
+                    Circle().fill(gold).frame(width: 6, height: 6).padding(.leading, 8)
+                    Text("今天")
+                    Spacer()
+                }.font(AppType.caption(10)).foregroundStyle(.secondary)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(colorScheme == .dark ? Color.white.opacity(0.04) : Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 18))
+
+            VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 12) {
                 Label("今日投入", systemImage: "sun.max.fill").foregroundStyle(teal)
                 Text(homeFocusDurationText(homeTodayFocusSeconds))
@@ -715,24 +751,8 @@ struct ContentView: View {
                         .font(AppType.caption()).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
-            .padding(18).background(teal.opacity(colorScheme == .dark ? 0.16 : 0.09), in: RoundedRectangle(cornerRadius: 18))
-
-            VStack(alignment: .leading, spacing: 12) {
-                Label("本周节奏", systemImage: "chart.bar.fill").foregroundStyle(blue)
-                Chart(points, id: \.day) { point in
-                    BarMark(x: .value("日期", point.day, unit: .day), y: .value("分钟", point.minutes), width: .ratio(0.6))
-                        .foregroundStyle((beijingCalendar.isDateInToday(point.day) ? gold : blue).gradient)
-                        .cornerRadius(3)
-                        .accessibilityLabel("\(homeWeekdayLetter(point.day)) · \(homeFocusDurationText(point.minutes * 60))")
-                }
-                .chartYAxis(.hidden)
-                .chartXAxis { AxisMarks(values: points.map(\.day)) { value in AxisValueLabel { if let day = value.as(Date.self) { Text(homeWeekdayLetter(day)).font(AppType.caption(10)) } } } }
-                .frame(height: 83)
-                Text("周一至周日 · 金色标记今天").font(AppType.caption(10)).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
-            .padding(18).background(blue.opacity(colorScheme == .dark ? 0.16 : 0.09), in: RoundedRectangle(cornerRadius: 18))
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(16).background(teal.opacity(colorScheme == .dark ? 0.09 : 0.035), in: RoundedRectangle(cornerRadius: 18))
 
             VStack(alignment: .leading, spacing: 12) {
                 Label("本周目标", systemImage: "target").foregroundStyle(gold)
@@ -742,7 +762,7 @@ struct ContentView: View {
                         Circle().trim(from: 0, to: progress).stroke(gold.gradient, style: StrokeStyle(lineWidth: 8, lineCap: .round)).rotationEffect(.degrees(-90))
                         Text("\(Int(progress * 100))%")
                             .font(AppType.ui(20, .semibold)).monospacedDigit()
-                    }.frame(width: 72, height: 72)
+                    }.frame(width: 54, height: 54)
                     VStack(alignment: .leading, spacing: 5) {
                         Text(String(format: "%.1f 小时", homeWeekFocusSeconds / 3600)).font(AppType.ui(16, .semibold))
                         Text("目标 \(store.pomodoro.weeklyFocusGoalMinutes / 60) 小时").font(AppType.caption()).foregroundStyle(.secondary)
@@ -750,8 +770,9 @@ struct ContentView: View {
                 }
                 Text("已保存记录 · 含番茄钟与正计时").font(AppType.caption(10)).foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
-            .padding(18).background(gold.opacity(colorScheme == .dark ? 0.16 : 0.09), in: RoundedRectangle(cornerRadius: 18))
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(16).background(gold.opacity(colorScheme == .dark ? 0.09 : 0.035), in: RoundedRectangle(cornerRadius: 18))
+            }.frame(width: 300)
         }
         .font(AppType.ui(12, .medium))
     }
