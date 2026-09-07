@@ -1623,6 +1623,16 @@ struct ContentView: View {
                     .frame(width: 168)
 
                     if let selected = store.selectedItem {
+                        QuickActionButton(
+                            title: selected.isPinned ? "已固定" : "固定到桌面",
+                            icon: selected.isPinned ? "checkmark.circle.fill" : "rectangle.on.rectangle",
+                            tint: accent
+                        ) { pinToDesktop(selected) }
+                        QuickActionButton(
+                            title: selected.isPaused ? "继续" : "暂停",
+                            icon: selected.isPaused ? "play.fill" : "pause.fill",
+                            tint: accent
+                        ) { store.togglePause(selected) }
                         headerGhostButton(title: "编辑", systemImage: "slider.horizontal.3") {
                             showingEdit = true
                         }
@@ -1668,28 +1678,7 @@ struct ContentView: View {
                             CountdownHero(item: selected, accent: accent)
 
                             Divider()
-                                .padding(.vertical, Space.l)
-
-                            HStack(spacing: Space.m) {
-                                QuickActionButton(
-                                    title: selected.isPinned ? "当前小组件内容" : "设为小组件内容",
-                                    icon: selected.isPinned ? "checkmark.circle.fill" : "rectangle.on.rectangle",
-                                    tint: accent
-                                ) {
-                                    pinToDesktop(selected)
-                                }
-                                QuickActionButton(
-                                    title: selected.isPaused ? "继续倒计时" : "暂停倒计时",
-                                    icon: selected.isPaused ? "play.fill" : "pause.fill",
-                                    tint: selected.isPaused ? accent : Color.secondary
-                                ) {
-                                    store.togglePause(selected)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Divider()
-                                .padding(.vertical, Space.l)
+                                .padding(.vertical, Space.xl)
 
                             CountdownTimelineCard(item: selected, accent: accent)
 
@@ -1698,13 +1687,7 @@ struct ContentView: View {
 
                             infoSection(selected)
                         }
-                        .padding(Space.xl)
-                        .cardSurface(
-                            cornerRadius: Radius.board,
-                            borderOpacity: 0.08,
-                            shadowRadius: 16,
-                            shadowY: 5
-                        )
+                        .padding(.horizontal, Space.xl)
                         .padding(.horizontal, Space.xxl)
                         .padding(.bottom, Space.xxl)
                     }
@@ -2670,7 +2653,7 @@ struct CountdownHero: View {
         let isDone = remaining <= 0
         let percent = Int((progressValue(remaining) * 100).rounded())
 
-        return VStack(alignment: .leading, spacing: Space.xl) {
+        return VStack(alignment: .leading, spacing: 28) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: Space.s) {
                     HStack(spacing: Space.s) {
@@ -2706,16 +2689,6 @@ struct CountdownHero: View {
                     }
                 }
 
-                Spacer()
-
-                ZStack {
-                    Circle()
-                        .fill(accent.opacity(0.14))
-                        .frame(width: 54, height: 54)
-                    Image(systemName: isDone ? "checkmark.circle.fill" : (item.isPaused ? "pause.fill" : "timer"))
-                        .font(AppType.ui(Typo.icon, .medium))
-                        .foregroundStyle(accent)
-                }
             }
 
             VStack(alignment: .leading, spacing: Space.s) {
@@ -2732,7 +2705,7 @@ struct CountdownHero: View {
                 TimeSlotProgressBar(
                     progress: progressValue(remaining),
                     color: accent,
-                    height: 10,
+                height: 7,
                     showsKnob: true,
                     showsMilestones: true,
                     animatesProgress: false
@@ -2767,13 +2740,25 @@ struct CountdownHero: View {
         let minutes = (total % 3600) / 60
         let seconds = total % 60
 
-        HStack(spacing: Space.s) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             if days > 0 {
-                TimeDigitBlock(value: String(format: "%d", days), label: "天", color: accent)
+                countdownUnit(String(days), "天")
             }
-            TimeDigitBlock(value: String(format: "%02d", hours), label: "时", color: accent)
-            TimeDigitBlock(value: String(format: "%02d", minutes), label: "分", color: accent)
-            TimeDigitBlock(value: String(format: "%02d", seconds), label: "秒", color: accent)
+            countdownUnit(String(format: "%02d", hours), "时")
+            countdownUnit(String(format: "%02d", minutes), "分")
+            countdownUnit(String(format: "%02d", seconds), "秒")
+        }
+    }
+
+    private func countdownUnit(_ value: String, _ label: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(value)
+                .font(AppType.timer(54))
+                .monospacedDigit()
+                .tracking(-1.2)
+            Text(label)
+                .font(AppType.caption(11, weight: .medium))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -2816,7 +2801,16 @@ struct CountdownTimelineCard: View {
         let elapsedDays = Int(elapsed / 86400)
         let remainingDays = Int(ceil(remaining / 86400))
 
-        return HStack {
+        return VStack(spacing: 10) {
+            GeometryReader { proxy in
+                let progress = min(1, max(0, elapsed / total))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08)).frame(height: 5)
+                    Capsule().fill(accent.gradient).frame(width: proxy.size.width * progress, height: 5)
+                    Circle().fill(accent).frame(width: 11, height: 11).offset(x: max(0, proxy.size.width * progress - 5.5))
+                }.frame(maxHeight: .infinity)
+            }.frame(height: 11)
+            HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("起始点")
                     .font(AppType.caption())
@@ -2841,6 +2835,7 @@ struct CountdownTimelineCard: View {
                     .foregroundStyle(.secondary)
                 Text(beijingDateString(item.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))
                     .font(AppType.ui(Typo.footnote, .medium))
+            }
             }
         }
     }
