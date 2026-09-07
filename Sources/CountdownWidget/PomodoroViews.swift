@@ -194,7 +194,7 @@ struct PomodoroView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("番茄钟")
+                    Text("专注")
                         .font(AppType.caption())
                         .foregroundStyle(.secondary)
                     Text(state.taskTitle.isEmpty ? "专注当前任务" : state.taskTitle)
@@ -259,18 +259,12 @@ struct PomodoroView: View {
                 selection: $workspace,
                 tint: timerMode == .stopwatch ? stopwatchColor : phaseColor
             )
+            .frame(width: 220)
             .padding(.horizontal, Space.xxl)
             .padding(.bottom, Space.l)
 
             workspaceContent
         }
-        .background(
-            LinearGradient(
-                colors: [Color.primary.opacity(0.04), Color.clear],
-                startPoint: .topLeading,
-                endPoint: .center
-            )
-        )
         .sheet(item: $editingRecord) { record in
             PomodoroHistoryEditSheet(
                 record: record,
@@ -356,6 +350,8 @@ struct PomodoroView: View {
         case .focus:
             ScrollView {
                 focusWorkspace
+                    .frame(maxWidth: 1040)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, Space.xxl)
                     .padding(.bottom, Space.xxl)
             }
@@ -364,6 +360,8 @@ struct PomodoroView: View {
         case .insights:
             ScrollView {
                 historyCard
+                    .frame(maxWidth: 1040)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, Space.xxl)
                     .padding(.bottom, Space.xxl)
             }
@@ -383,12 +381,7 @@ struct PomodoroView: View {
             infoPanel
                 .frame(width: 272)
         }
-        .cardSurface(
-            cornerRadius: Radius.board,
-            borderOpacity: 0.08,
-            shadowRadius: 16,
-            shadowY: 5
-        )
+        .padding(.vertical, Space.m)
     }
 
     /// 右侧合并信息面板：任务、本组进度、节奏摘要，用分隔线分区，不各占一张卡。
@@ -707,7 +700,7 @@ struct PomodoroView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 520)
+        .frame(maxWidth: .infinity, alignment: .top)
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.xl)
     }
@@ -838,7 +831,6 @@ struct PomodoroView: View {
             }
         }
         .padding(Space.l)
-        .cardSurface()
     }
 
     private var weeklyGoalCard: some View {

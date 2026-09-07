@@ -252,7 +252,8 @@ settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
             .padding(.horizontal, Space.xxl)
             .padding(.top, Space.xxl)
             .padding(.bottom, Space.xxl)
-            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: 800, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -339,12 +340,7 @@ settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
         }
         .padding(Space.l)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardSurface(
-            cornerRadius: Radius.board,
-            borderOpacity: 0.07,
-            shadowRadius: 12,
-            shadowY: 4
-        )
+        .background(Color.primary.opacity(colorScheme == .dark ? 0.035 : 0.025), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func settingLabel(title: String, subtitle: String) -> some View {

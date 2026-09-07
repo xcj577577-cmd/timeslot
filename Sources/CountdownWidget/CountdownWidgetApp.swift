@@ -109,7 +109,7 @@ struct ContentView: View {
                         }
                     } else {
                         HStack(alignment: .top, spacing: 14) {
-                            sidebar
+                            if selectedSection == .countdown { sidebar }
                             detail
                         }
                     }
@@ -1596,7 +1596,7 @@ struct ContentView: View {
         .id(selectedSection)
         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.988)))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassBoard(wash: store.accentPreset.color)
+        .background(colorScheme == .dark ? Color(nsColor: .windowBackgroundColor) : Color.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 18))
     }
 
     private var countdownDetail: some View {
