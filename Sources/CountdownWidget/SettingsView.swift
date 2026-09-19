@@ -348,7 +348,7 @@ settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
             // 系统设置风格：圆角图标块 + 小节标题
             HStack(spacing: Space.s) {
                 Image(systemName: icon)
-                    .font(AppType.ui(13, .medium))
+                    .font(AppType.ui(Typo.footnote, .medium))
                     .foregroundStyle(.primary.opacity(0.72))
                     .frame(width: 26, height: 26)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7, style: .continuous))

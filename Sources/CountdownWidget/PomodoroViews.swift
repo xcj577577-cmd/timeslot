@@ -83,7 +83,7 @@ private struct StudyShareSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("学习记录分享图").font(.system(size: 20, weight: .semibold))
                     Text("选择日期，预览后复制或保存图片")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(AppType.ui(Typo.footnote)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button { dismiss() } label: {
@@ -97,7 +97,7 @@ private struct StudyShareSheet: View {
             .padding(24)
             VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("日期范围").font(.callout.weight(.medium))
+                Text("日期范围").font(AppType.ui(Typo.footnote, .medium))
                 Spacer()
             Picker("日期范围", selection: $range) {
                 ForEach(["今天", "本周", "自选日期"], id: \.self) { Text($0) }
@@ -111,8 +111,8 @@ private struct StudyShareSheet: View {
             }
             Toggle(isOn: $hideSubjects) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("隐藏科目明细").font(.callout.weight(.medium))
-                    Text("仅分享总时长和投入图").font(.caption).foregroundStyle(.secondary)
+                    Text("隐藏科目明细").font(AppType.ui(Typo.footnote, .medium))
+                    Text("仅分享总时长和投入图").font(AppType.caption()).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.toggleStyle(.switch).controlSize(.small)
                 .accessibilityLabel("隐藏科目明细")
@@ -130,7 +130,7 @@ private struct StudyShareSheet: View {
             HStack {
                 Label(copied ? "已复制，可粘贴到聊天" : saved ? "图片已保存" : "仅统计已保存记录",
                       systemImage: copied || saved ? "checkmark.circle" : "info.circle")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppType.caption()).foregroundStyle(.secondary)
                 Spacer()
                 Button { copyImage() } label: { Label("复制图片", systemImage: "doc.on.doc") }
                 Button { save() } label: { Label("保存 PNG…", systemImage: "square.and.arrow.down") }
@@ -230,7 +230,7 @@ private struct StudyShareSheet: View {
             }
             .chartYScale(domain: 0...max(1, (points.map(\.hours).max() ?? 0) * 1.2))
             .chartYAxis { AxisMarks(position: .leading) { value in
-                AxisGridLine()
+                AxisGridLine().foregroundStyle(Surface.gridLine)
                 AxisValueLabel { if let hours = value.as(Double.self) { Text(String(format: "%g h", hours)) } }
             } }
             .chartXAxis { AxisMarks(values: .automatic(desiredCount: min(count, 7))) { value in
@@ -482,7 +482,7 @@ struct PomodoroView: View {
                     presentedSheet = .share
                 } label: {
                     Label("分享记录", systemImage: "square.and.arrow.up")
-                        .font(AppType.ui(12.5, .medium))
+                        .font(AppType.ui(Typo.footnote, .medium))
                         .padding(8)
                 }
                 .buttonStyle(TimeSlotPressableStyle())
@@ -508,7 +508,7 @@ struct PomodoroView: View {
                     presentedSheet = .tasks
                 } label: {
                     Label("任务", systemImage: "checklist")
-                        .font(AppType.ui(12.5, .medium))
+                        .font(AppType.ui(Typo.footnote, .medium))
                         .padding(.horizontal, 11)
                         .padding(.vertical, 7)
                         .foregroundStyle(.primary.opacity(0.78))
@@ -519,7 +519,7 @@ struct PomodoroView: View {
 
                 Button(action: onSyncWidget) {
                     Label("设为小组件内容", systemImage: "rectangle.3.group")
-                        .font(AppType.ui(12.5, .medium))
+                        .font(AppType.ui(Typo.footnote, .medium))
                         .padding(.horizontal, 11)
                         .padding(.vertical, 7)
                         .foregroundStyle(.primary.opacity(0.78))
@@ -919,7 +919,7 @@ struct PomodoroView: View {
                     }
                 } label: {
                     Label("重置", systemImage: "arrow.counterclockwise")
-                        .font(AppType.ui(13, .medium))
+                        .font(AppType.ui(Typo.footnote, .medium))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .foregroundStyle(.primary.opacity(0.72))
@@ -943,7 +943,7 @@ struct PomodoroView: View {
                         isLive ? "暂停" : "开始",
                         systemImage: isLive ? "pause.fill" : "play.fill"
                     )
-                    .font(AppType.ui(14, .semibold))
+                    .font(AppType.ui(Typo.body, .semibold))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 2)
                 }
@@ -961,7 +961,7 @@ struct PomodoroView: View {
                     }
                 } label: {
                     Label("停止", systemImage: "stop.fill")
-                        .font(AppType.ui(13, .medium))
+                        .font(AppType.ui(Typo.footnote, .medium))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .foregroundStyle(.primary.opacity(0.72))
@@ -983,7 +983,7 @@ struct PomodoroView: View {
                         }
                     } label: {
                         Label("跳过", systemImage: "forward.end.fill")
-                            .font(AppType.ui(13, .medium))
+                            .font(AppType.ui(Typo.footnote, .medium))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .foregroundStyle(.primary.opacity(0.72))
@@ -1008,7 +1008,7 @@ struct PomodoroView: View {
                     }
                 } label: {
                     Text("\(mins)分")
-                        .font(AppType.caption(11.5, weight: isCurrent ? .semibold : .regular))
+                        .font(AppType.caption(12, weight: isCurrent ? .semibold : .regular))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(isCurrent ? Color.primary.opacity(0.08) : Surface.nested, in: Capsule())
@@ -1045,7 +1045,7 @@ struct PomodoroView: View {
             HStack {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text("历史记录")
-                        .font(AppType.pageTitle(15))
+                        .font(AppType.title(15))
                         .tracking(0.2)
                     Text("按开始日期分组 · 可修正任务与时间")
                         .font(AppType.ui(Typo.footnote))
@@ -1195,7 +1195,7 @@ struct PomodoroView: View {
                     presentedSheet = .weeklyGoal
                 } label: {
                     Label("调整", systemImage: "pencil")
-                        .font(AppType.caption(11.5, weight: .medium))
+                        .font(AppType.caption(12, weight: .medium))
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
@@ -1233,7 +1233,7 @@ struct PomodoroView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text("专注趋势")
-                        .font(AppType.pageTitle(15))
+                        .font(AppType.title(15))
                         .tracking(0.2)
                     Text("每日累计专注时长 · 点击图表查看当天明细")
                         .font(AppType.caption())
@@ -1364,7 +1364,7 @@ struct PomodoroView: View {
         return VStack(alignment: .leading, spacing: Space.m) {
             HStack(alignment: .firstTextBaseline) {
                 Text("按任务分布")
-                    .font(AppType.pageTitle(15))
+                    .font(AppType.title(15))
                     .tracking(0.2)
                 Spacer()
                 Text("仅统计专注时长")
@@ -1467,7 +1467,7 @@ struct PomodoroView: View {
                     HStack(spacing: Space.xs) {
                         Text(menuOnlyRangeTitle)
                         Image(systemName: "chevron.down")
-                            .font(AppType.caption(9, weight: .semibold))
+                            .font(AppType.caption(11, weight: .semibold))
                     }
                     .font(AppType.ui(Typo.footnote, .medium))
                     .padding(.horizontal, 10)
@@ -1654,13 +1654,13 @@ struct PomodoroView: View {
 
     private func formatHistoryDuration(_ value: TimeInterval) -> String {
         let total = max(0, Int(value.rounded()))
-        if total < 60 { return "\(total)秒" }
+        if total < 60 { return "\(total) 秒" }
         let minutes = total / 60
         let hours = minutes / 60
         if hours > 0 {
-            return minutes % 60 == 0 ? "\(hours)小时" : "\(hours)小时\(minutes % 60)分"
+            return minutes % 60 == 0 ? "\(hours) 小时" : "\(hours) 小时 \(minutes % 60) 分"
         }
-        return "\(minutes)分钟"
+        return "\(minutes) 分钟"
     }
 }
 
@@ -1735,7 +1735,7 @@ struct PomodoroRhythmCell: View {
                         Text("\(current) \(suffix)")
                             .font(AppType.ui(Typo.footnote, .medium))
                         Image(systemName: "chevron.down")
-                            .font(AppType.caption(7, weight: .bold))
+                            .font(AppType.caption(11, weight: .bold))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -1803,7 +1803,7 @@ private struct PomodoroActivityCalendar: View {
 
         return VStack(alignment: .leading, spacing: Space.m) {
             HStack(alignment: .firstTextBaseline) {
-                Text("每日投入").font(AppType.pageTitle(15))
+                Text("每日投入").font(AppType.title(15))
                 Spacer()
                 Text("\(activeDays) 天有投入 · 最多展示最近 12 周")
                     .font(AppType.caption()).foregroundStyle(.secondary)
@@ -1816,11 +1816,11 @@ private struct PomodoroActivityCalendar: View {
                         Text("\(calendar.component(.month, from: date))/\(calendar.component(.day, from: date))").frame(height: 28)
                     }
                 }
-                .font(AppType.caption(10)).foregroundStyle(.secondary)
+                .font(AppType.caption(11)).foregroundStyle(.secondary)
                 ForEach(0..<7, id: \.self) { weekday in
                     VStack(spacing: 5) {
                         Text(["一", "二", "三", "四", "五", "六", "日"][weekday])
-                            .font(AppType.caption(9))
+                            .font(AppType.caption(11))
                             .foregroundStyle(.secondary)
                             .lineLimit(1).minimumScaleFactor(0.7)
                             .frame(height: 18)
@@ -1871,7 +1871,7 @@ private struct PomodoroActivityCalendar: View {
                 }
                 Text("8小时+")
             }
-            .font(AppType.caption(10)).foregroundStyle(.secondary)
+            .font(AppType.caption(11)).foregroundStyle(.secondary)
         }
         .padding(Space.l)
         .nestedSurface()
@@ -1897,7 +1897,7 @@ private struct AnalysisWorkspaceHeader: View {
                 .font(AppType.pageTitle(28))
                 .tracking(-0.4)
             Text("让每一天的投入，有迹可循。")
-                .font(AppType.ui(13)).foregroundStyle(.secondary)
+                .font(AppType.ui(Typo.footnote)).foregroundStyle(.secondary)
         }
     }
 }
@@ -1945,7 +1945,7 @@ private struct FocusAnalysisWorkspace: View {
 
     private func duration(_ seconds: Double) -> String {
         let minutes = max(0, Int(seconds / 60))
-        return minutes >= 60 ? "\(minutes / 60)小时\(minutes % 60)分" : "\(minutes)分钟"
+        return minutes >= 60 ? "\(minutes / 60) 小时 \(minutes % 60) 分" : "\(minutes) 分钟"
     }
 
     var body: some View {
@@ -2003,7 +2003,7 @@ private struct FocusAnalysisWorkspace: View {
 
             Divider()
             HStack {
-                Text("投入趋势").font(AppType.pageTitle(18))
+                Text("投入趋势").font(AppType.title(Typo.headline))
                 Spacer()
                 Text(selectedTask).font(AppType.caption()).foregroundStyle(.secondary)
             }
@@ -2016,7 +2016,7 @@ private struct FocusAnalysisWorkspace: View {
                 }
                 RuleMark(y: .value("日均", average / 3600))
                     .foregroundStyle(Color.secondary).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .annotation(position: .top, alignment: .trailing) { Text("日均 \(duration(average))").font(AppType.caption(10)).foregroundStyle(.secondary) }
+                    .annotation(position: .top, alignment: .trailing) { Text("日均 \(duration(average))").font(AppType.caption(11)).foregroundStyle(.secondary) }
             }
             .chartYAxisLabel("小时")
             .chartXAxis { AxisMarks(values: .automatic(desiredCount: 7)) { AxisValueLabel(format: .dateTime.month(.defaultDigits).day()) } }
@@ -2034,7 +2034,7 @@ private struct FocusAnalysisWorkspace: View {
                 let day = calendar.startOfDay(for: selectedDate)
                 let detail = Dictionary(grouping: current.filter { $0.day == day }, by: \.task).mapValues { $0.reduce(0) { $0 + $1.seconds } }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("\(beijingDateString(day, dateStyle: .abbreviated, timeStyle: .omitted)) · \(duration(daily[day, default: 0]))").font(AppType.ui(13, .semibold))
+                    Text("\(beijingDateString(day, dateStyle: .abbreviated, timeStyle: .omitted)) · \(duration(daily[day, default: 0]))").font(AppType.ui(Typo.footnote, .semibold))
                     ForEach(detail.keys.sorted(), id: \.self) { task in
                         HStack { Text(task).foregroundStyle(taskColor(task)); Spacer(); Text(duration(detail[task, default: 0])) }.font(AppType.caption())
                     }
@@ -2045,26 +2045,26 @@ private struct FocusAnalysisWorkspace: View {
             }
 
             Divider()
-            Text("科目分配").font(AppType.pageTitle(18))
+            Text("科目分配").font(AppType.title(Typo.headline))
             if order.isEmpty { Text("完成并保存一次学习后，这里会显示科目分配。").foregroundStyle(.secondary) }
             ForEach(order, id: \.self) { task in
                 let taskDays = Dictionary(grouping: current.filter { $0.task == task }, by: \.day).mapValues { $0.reduce(0) { $0 + $1.seconds } }
                 HStack(spacing: 16) {
                     Circle().fill(taskColor(task)).frame(width: 8, height: 8)
-                    Text(task).font(AppType.ui(13, .medium)).frame(width: 72, alignment: .leading).lineLimit(1)
+                    Text(task).font(AppType.ui(Typo.footnote, .medium)).frame(width: 72, alignment: .leading).lineLimit(1)
                     Chart(dates, id: \.self) { date in
                         BarMark(x: .value("日期", date, unit: .day), y: .value("小时", taskDays[date, default: 0] / 3600)).foregroundStyle(taskColor(task))
                     }.chartXAxis(.hidden).chartYAxis(.hidden).frame(height: 34)
                         .accessibilityLabel("\(task)近\(days)天的每日投入")
                     VStack(alignment: .trailing, spacing: 3) {
-                        Text(duration(tasks[task, default: 0])).font(AppType.ui(13, .semibold))
+                        Text(duration(tasks[task, default: 0])).font(AppType.ui(Typo.footnote, .semibold))
                         Text(String(format: "%.1f%%", tasks[task, default: 0] / max(1, total) * 100)).font(AppType.caption()).foregroundStyle(.secondary)
                     }.frame(width: 105, alignment: .trailing).monospacedDigit()
                 }
             }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Text("学习时段").font(AppType.pageTitle(18))
+                Text("学习时段").font(AppType.title(Typo.headline))
                 Text("\(selectedTask) · 各时段累计投入，跨时段记录按实际时长比例分配")
                     .font(AppType.caption()).foregroundStyle(.secondary)
             }
@@ -2086,7 +2086,7 @@ private struct FocusAnalysisWorkspace: View {
 
     private var analysisPeriodPicker: some View {
         HStack(spacing: 12) {
-            Text("分析周期").font(AppType.ui(13, .medium))
+            Text("分析周期").font(AppType.ui(Typo.footnote, .medium))
             // 用应用自己的分段控件，选中态是墨色纸面，不引入系统蓝。
             TimeSlotSegmentedControl(
                 options: [7, 30, 90].map {
@@ -2110,7 +2110,7 @@ private struct FocusAnalysisWorkspace: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(AppType.caption()).foregroundStyle(.secondary)
             Text(value).font(AppType.ui(20, .semibold)).monospacedDigit()
-            Text(note).font(AppType.caption(10)).foregroundStyle(.secondary)
+            Text(note).font(AppType.caption(11)).foregroundStyle(.secondary)
         }
     }
 }
@@ -2193,14 +2193,14 @@ struct PomodoroHistoryRow: View {
     private func durationText(_ value: TimeInterval) -> String {
         let total = max(0, Int((displayedDuration ?? value).rounded()))
         if record.status == .stopwatch {
-            if total < 60 { return "\(total)秒" }
+            if total < 60 { return "\(total) 秒" }
             let minutes = total / 60
             let seconds = total % 60
-            return seconds == 0 ? "\(minutes)分钟" : "\(minutes)分\(seconds)秒"
+            return seconds == 0 ? "\(minutes) 分钟" : "\(minutes) 分 \(seconds) 秒"
         }
         let plannedMinutes = max(1, Int(record.plannedDuration / 60))
-        if total < 60 { return "\(total)秒 / \(plannedMinutes)分" }
-        return "\(total / 60)分\(total % 60)秒 / \(plannedMinutes)分"
+        if total < 60 { return "\(total) 秒 / \(plannedMinutes) 分" }
+        return "\(total / 60) 分 \(total % 60) 秒 / \(plannedMinutes) 分"
     }
 }
 

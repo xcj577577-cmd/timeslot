@@ -270,7 +270,7 @@ struct ContentView: View {
     private func headerGhostButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(AppType.ui(12.5, .medium))
+                .font(AppType.ui(Typo.footnote, .medium))
                 .padding(.horizontal, 11)
                 .padding(.vertical, 7)
                 .foregroundStyle(.primary.opacity(0.78))
@@ -311,7 +311,7 @@ struct ContentView: View {
                 showingShortcuts = true
             } label: {
                 Image(systemName: "keyboard")
-                    .font(AppType.ui(15, .medium))
+                    .font(AppType.ui(Typo.body, .medium))
                     .frame(width: 36, height: 36)
                     .foregroundStyle(.secondary)
             }
@@ -340,7 +340,7 @@ struct ContentView: View {
                     .frame(width: 3, height: 18)
 
                 Image(systemName: systemImage)
-                    .font(AppType.ui(15, .medium))
+                    .font(AppType.ui(Typo.body, .medium))
                     .frame(width: 40, height: 40)
                     .foregroundStyle(isSelected ? Color.primary : (isHovered ? Color.primary.opacity(0.8) : Color.primary.opacity(0.42)))
                     .background {
@@ -392,7 +392,7 @@ struct ContentView: View {
                         showingAdd = true
                     } label: {
                         Image(systemName: "plus")
-                            .font(AppType.ui(14, .medium))
+                            .font(AppType.ui(Typo.body, .medium))
                             .frame(width: 32, height: 32)
                             .foregroundStyle(.primary.opacity(0.78))
                     }
@@ -415,7 +415,7 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                     TextField("搜索倒计时 (⌘F)", text: $searchText)
                         .textFieldStyle(.plain)
-                        .font(AppType.ui(13))
+                        .font(AppType.ui(Typo.footnote))
                         .focused($searchFieldFocused)
                         .accessibilityIdentifier("timeslot.countdown.search")
                     if !searchText.isEmpty {
@@ -454,7 +454,7 @@ struct ContentView: View {
                             }
                         } label: {
                             Text(filter.rawValue)
-                                .font(AppType.caption(11.5, weight: isSelected ? .semibold : .regular))
+                                .font(AppType.caption(12, weight: isSelected ? .semibold : .regular))
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 5)
                                 .background(
@@ -495,7 +495,7 @@ struct ContentView: View {
                                     showingAdd = true
                                 } label: {
                                     Text("新建倒计时")
-                                        .font(AppType.ui(12.5, .medium))
+                                        .font(AppType.ui(Typo.footnote, .medium))
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 7)
                                         .foregroundStyle(.primary.opacity(0.78))
@@ -719,8 +719,8 @@ struct ContentView: View {
                 }
                 .chartYScale(domain: 0...max(1, (points.map { $0.minutes / 60 }.max() ?? 0) * 1.15))
                 .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
-                    AxisGridLine().foregroundStyle(Color.primary.opacity(0.06))
-                    AxisValueLabel { if let hours = value.as(Double.self) { Text(String(format: "%gh", hours)).font(AppType.caption(10)) } }
+                    AxisGridLine().foregroundStyle(Surface.gridLine)
+                    AxisValueLabel { if let hours = value.as(Double.self) { Text(String(format: "%gh", hours)).font(AppType.caption(11)) } }
                 } }
                 .chartXAxis { AxisMarks(values: points.map(\.day)) { value in AxisValueLabel { if let day = value.as(Date.self) { Text(homeWeekdayLetter(day)).font(AppType.caption(11)) } } } }
                 .frame(height: 150)
@@ -794,11 +794,11 @@ struct ContentView: View {
                             .font(AppType.ui(20, .semibold)).monospacedDigit()
                     }.frame(width: 54, height: 54)
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(String(format: "%.1f 小时", homeWeekFocusSeconds / 3600)).font(AppType.ui(16, .semibold))
+                        Text(String(format: "%.1f 小时", homeWeekFocusSeconds / 3600)).font(AppType.ui(Typo.headline, .semibold))
                         Text("目标 \(store.pomodoro.weeklyFocusGoalMinutes / 60) 小时").font(AppType.caption()).foregroundStyle(.secondary)
                     }
                 }
-                Text("已保存记录 · 含番茄钟与正计时").font(AppType.caption(10)).foregroundStyle(.secondary)
+                Text("已保存记录 · 含番茄钟与正计时").font(AppType.caption(11)).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(16).background(gold.opacity(colorScheme == .dark ? 0.09 : 0.035), in: RoundedRectangle(cornerRadius: 18))
@@ -806,7 +806,7 @@ struct ContentView: View {
             .accessibilityLabel("本周目标，已完成 \(String(format: "%.1f", homeWeekFocusSeconds / 3600)) 小时，目标 \(max(1, store.pomodoro.weeklyFocusGoalMinutes / 60)) 小时，完成 \(Int(progress * 100))%")
             }.frame(width: 300)
         }
-        .font(AppType.ui(12, .medium))
+        .font(AppType.ui(Typo.footnote, .medium))
     }
 
     private var homeCommandDeck: some View {
@@ -830,7 +830,7 @@ struct ContentView: View {
                         }
                     } label: {
                         Image(systemName: next == nil ? "plus" : "arrow.up.right")
-                            .font(AppType.ui(13, .semibold))
+                            .font(AppType.ui(Typo.footnote, .semibold))
                             .frame(width: 30, height: 30)
                             .contentShape(Rectangle())
                     }
@@ -904,7 +904,7 @@ struct ContentView: View {
                         }
                     } label: {
                         Label("打开专注", systemImage: "arrow.up.right")
-                            .font(AppType.ui(12.5, .medium))
+                            .font(AppType.ui(Typo.footnote, .medium))
                             .padding(.horizontal, 11)
                             .padding(.vertical, 7)
                             .foregroundStyle(.primary.opacity(0.78))
@@ -971,7 +971,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("3 项")
-                    .font(AppType.caption(10.5, weight: .medium))
+                    .font(AppType.caption(11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .padding(.bottom, Space.m)
@@ -1010,11 +1010,11 @@ struct ContentView: View {
                     .font(AppType.caption(11, weight: .semibold))
                     .foregroundStyle(BrandPalette.teal)
                 Text("本地记录 · 实时同步")
-                    .font(AppType.caption(10.5, weight: .medium))
+                    .font(AppType.caption(11, weight: .medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text("北京时间")
-                    .font(AppType.caption(10))
+                    .font(AppType.caption(11))
                     .foregroundStyle(.tertiary)
             }
             .padding(.top, Space.s)
@@ -1042,14 +1042,14 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(value)
-                    .font(AppType.ui(15, .medium))
+                    .font(AppType.ui(Typo.body, .medium))
                     .foregroundStyle(color)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
             Text(detail)
-                .font(AppType.caption(10.5))
+                .font(AppType.caption(11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
@@ -1090,7 +1090,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(title)
-                    .font(AppType.pageTitle(15))
+                    .font(AppType.title(15))
                     .tracking(0.2)
                 Spacer()
                 Button(actionTitle, action: action)
@@ -1138,7 +1138,7 @@ struct ContentView: View {
                             .font(AppType.timer(21))
                             .monospacedDigit()
                         Text("分钟")
-                            .font(AppType.caption(9.5))
+                            .font(AppType.caption(11))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -1149,7 +1149,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             } else {
                 Text("今天还没有专注记录")
-                    .font(AppType.ui(13))
+                    .font(AppType.ui(Typo.footnote))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
@@ -1168,7 +1168,7 @@ struct ContentView: View {
                     .font(AppType.title(15))
                 Spacer()
                 Image(systemName: "flame.fill")
-                    .font(AppType.ui(15, .medium))
+                    .font(AppType.ui(Typo.body, .medium))
                     .foregroundStyle(DataGradient.base(1))
             }
             Spacer()
@@ -1177,7 +1177,7 @@ struct ContentView: View {
                     .font(AppType.timer(40))
                     .monospacedDigit()
                 Text("天")
-                    .font(AppType.ui(14))
+                    .font(AppType.ui(Typo.body))
                     .foregroundStyle(.secondary)
             }
             Text(days > 0 ? "保持节奏，今天是新的延续" : "今天完成一个阶段即可开启")
@@ -1202,7 +1202,7 @@ struct ContentView: View {
                 Spacer()
                 if let best, best.minutes > 0 {
                     Label(best.label, systemImage: best.icon)
-                        .font(AppType.caption(10.5, weight: .semibold))
+                        .font(AppType.caption(11, weight: .semibold))
                         .foregroundStyle(DataGradient.base(2))
                 }
             }
@@ -1210,7 +1210,7 @@ struct ContentView: View {
                 ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
                     HStack(spacing: 7) {
                         Image(systemName: slot.icon)
-                            .font(AppType.caption(10))
+                            .font(AppType.caption(11))
                             .foregroundStyle(.secondary)
                             .frame(width: 14)
                         GeometryReader { geo in
@@ -1224,7 +1224,7 @@ struct ContentView: View {
                         }
                         .frame(height: 8)
                         Text(slot.minutes >= 60 ? String(format: "%.1fh", slot.minutes / 60) : "\(Int(slot.minutes))m")
-                            .font(AppType.caption(10))
+                            .font(AppType.caption(11))
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                             .frame(width: 34, alignment: .trailing)
@@ -1263,7 +1263,7 @@ struct ContentView: View {
                     .font(AppType.timer(32))
                     .monospacedDigit()
                 Text("小时")
-                    .font(AppType.ui(13))
+                    .font(AppType.ui(Typo.footnote))
                     .foregroundStyle(.secondary)
             }
             TimeSlotProgressBar(
@@ -1316,7 +1316,7 @@ struct ContentView: View {
                                 .foregroundStyle(Color.primary.opacity(colorScheme == .dark ? 0.58 : 0.46))
                         }
                     }
-                    .font(AppType.caption(10, weight: .medium))
+                    .font(AppType.caption(11, weight: .medium))
                 }
             }
             .chartYAxis {
@@ -1330,7 +1330,7 @@ struct ContentView: View {
                                 .foregroundStyle(Color.primary.opacity(colorScheme == .dark ? 0.52 : 0.42))
                         }
                     }
-                    .font(AppType.caption(9, weight: .medium))
+                    .font(AppType.caption(11, weight: .medium))
                 }
             }
             .frame(height: 92)
@@ -1343,7 +1343,7 @@ struct ContentView: View {
     private func homeMiniMetric(eyebrow: String, value: String, footnote: String, progress: CGFloat? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(eyebrow)
-                .font(AppType.ui(13))
+                .font(AppType.ui(Typo.footnote))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Text(value)
@@ -1491,9 +1491,9 @@ struct ContentView: View {
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         if hours > 0 {
-            return minutes > 0 ? "\(hours)小时 \(minutes)分" : "\(hours)小时"
+            return minutes > 0 ? "\(hours) 小时 \(minutes) 分" : "\(hours) 小时"
         }
-        return "\(minutes)分钟"
+        return "\(minutes) 分钟"
     }
 
     private func homeRemaining(_ remaining: TimeInterval) -> String {
@@ -1635,7 +1635,7 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "ellipsis")
                                 .font(AppType.caption(12, weight: .medium))
-                                .frame(width: 32, height: 32)
+                                .frame(width: 28, height: 28)
                                 .foregroundStyle(.secondary)
                         }
                         .menuStyle(.borderlessButton)
@@ -1707,7 +1707,7 @@ struct ContentView: View {
                             showingAdd = true
                         } label: {
                             Text("新建倒计时")
-                                .font(AppType.ui(12.5, .medium))
+                                .font(AppType.ui(Typo.footnote, .medium))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)
                                 .foregroundStyle(.primary.opacity(0.78))
@@ -1727,7 +1727,7 @@ struct ContentView: View {
                     .font(AppType.ui(Typo.footnote, .medium))
                     .foregroundStyle(.secondary)
                 Text(beijingDateString(item.targetDate, dateStyle: .long, timeStyle: .omitted))
-                    .font(AppType.pageTitle(18))
+                    .font(AppType.title(Typo.headline))
                 Text(beijingDateString(item.targetDate, dateStyle: .omitted, timeStyle: .shortened) + " · 北京时间")
                     .font(AppType.caption())
                     .foregroundStyle(.secondary)
@@ -1759,7 +1759,7 @@ struct ContentView: View {
     private func countdownStatusRow(title: String, value: String, icon: String) -> some View {
         HStack(spacing: Space.m) {
             Image(systemName: icon)
-                .font(AppType.ui(12, .medium))
+                .font(AppType.ui(Typo.footnote, .medium))
                 .foregroundStyle(accent)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
@@ -1902,7 +1902,7 @@ struct CountdownRoadmapTimelineView: View {
                             VStack(alignment: .leading, spacing: Space.m) {
                                 HStack(spacing: Space.s) {
                                     Image(systemName: group.icon)
-                                        .font(AppType.ui(13, .semibold))
+                                        .font(AppType.ui(Typo.footnote, .semibold))
                                         .foregroundStyle(group.color)
                                     Text(group.title)
                                         .font(AppType.ui(Typo.body, .semibold))
@@ -1988,7 +1988,7 @@ struct CountdownRoadmapTimelineView: View {
                     Text("最远 \(last.title)")
                 }
             }
-            .font(AppType.caption(10.5))
+            .font(AppType.caption(11))
             .foregroundStyle(.secondary)
         }
         .padding(Space.m)
@@ -2066,7 +2066,7 @@ private struct RoadmapItemRow: View {
                             onTogglePause()
                         } label: {
                             Image(systemName: item.isPaused ? "play.fill" : "pause.fill")
-                                .font(AppType.caption(10, weight: .semibold))
+                                .font(AppType.caption(11, weight: .semibold))
                                 .frame(width: 22, height: 22)
                         }
                         .buttonStyle(.bordered)
@@ -2078,7 +2078,7 @@ private struct RoadmapItemRow: View {
                             onEdit()
                         } label: {
                             Image(systemName: "slider.horizontal.3")
-                                .font(AppType.caption(10, weight: .semibold))
+                                .font(AppType.caption(11, weight: .semibold))
                                 .frame(width: 22, height: 22)
                         }
                         .buttonStyle(.bordered)
@@ -2116,9 +2116,9 @@ private struct RoadmapItemRow: View {
         let d = total / 86400
         let h = (total % 86400) / 3600
         let m = (total % 3600) / 60
-        if d > 0 { return "剩 \(d)天 \(h)小时" }
-        if h > 0 { return "剩 \(h)小时 \(m)分" }
-        return "剩 \(m)分"
+        if d > 0 { return "剩 \(d) 天 \(h) 小时" }
+        if h > 0 { return "剩 \(h) 小时 \(m) 分" }
+        return "剩 \(m) 分"
     }
 }
 
@@ -2343,7 +2343,7 @@ private struct WidgetGuideSheet: View {
             VStack(alignment: .leading, spacing: Space.xl) {
                 HStack(spacing: Space.m) {
                     Image(systemName: syncInfo.icon)
-                        .font(AppType.ui(14, .semibold))
+                        .font(AppType.ui(Typo.body, .semibold))
                         .foregroundStyle(syncInfo.color)
                         .frame(width: 30, height: 30)
                         .background(
@@ -2482,7 +2482,7 @@ private struct InteractiveWidgetSimulatorView: View {
                 }
                 Spacer()
                 Text(title)
-                    .font(AppType.ui(13, .semibold))
+                    .font(AppType.ui(Typo.footnote, .semibold))
                     .lineLimit(1)
                 let rem = item?.remaining(at: date) ?? 3600
                 Text(rem > 0 ? "\(max(0, Int(rem / 86400))) 天" : "已到达")
@@ -2512,7 +2512,7 @@ private struct InteractiveWidgetSimulatorView: View {
                     HStack {
                         BrandMark(size: 16)
                         Text(title)
-                            .font(AppType.ui(14, .semibold))
+                            .font(AppType.ui(Typo.body, .semibold))
                             .lineLimit(1)
                     }
                     let rem = item?.remaining(at: date) ?? 3600
@@ -2540,7 +2540,7 @@ private struct InteractiveWidgetSimulatorView: View {
                 HStack {
                     BrandMark(size: 20)
                     Text(title)
-                        .font(AppType.ui(15, .semibold))
+                        .font(AppType.ui(Typo.body, .semibold))
                     Spacer()
                     Image(systemName: "macwindow.on.rectangle")
                         .foregroundStyle(accent)
@@ -2680,20 +2680,20 @@ struct CountdownRow: View {
                     .frame(width: 26, height: 26)
 
                 Image(systemName: item.isPaused ? "pause.fill" : (item.isPinned ? "pin.fill" : "calendar"))
-                    .font(AppType.caption(10, weight: .semibold))
+                    .font(AppType.caption(11, weight: .semibold))
                     .foregroundStyle(Color.primary.opacity(0.72))
             }
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(item.title)
-                        .font(AppType.ui(13, isSelected ? .semibold : .regular))
+                        .font(AppType.ui(Typo.footnote, isSelected ? .semibold : .regular))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
                     if item.isPinned {
                         Image(systemName: "rectangle.3.group.fill")
-                            .font(AppType.caption(9))
+                            .font(AppType.caption(11))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -2710,7 +2710,7 @@ struct CountdownRow: View {
 
                 if isUrgent {
                     Text("今天")
-                        .font(AppType.caption(9, weight: .semibold))
+                        .font(AppType.caption(11, weight: .semibold))
                         .foregroundStyle(Color.orange)
                 }
             }
@@ -2745,9 +2745,9 @@ struct CountdownRow: View {
         let d = total / 86400
         let h = (total % 86400) / 3600
         let m = (total % 3600) / 60
-        if d > 0 { return "\(d)天 \(h)小时" }
-        if h > 0 { return "\(h)小时 \(m)分" }
-        return "\(m)分 \(total % 60)秒"
+        if d > 0 { return "\(d) 天 \(h) 小时" }
+        if h > 0 { return "\(h) 小时 \(m) 分" }
+        return "\(m) 分 \(total % 60) 秒"
     }
 }
 
@@ -2808,8 +2808,8 @@ struct CountdownHero: View {
                             .foregroundStyle(.secondary)
                             .fixedSize()
                     }
-                    Text("\((total % 86400) / 3600) 小时 · \((total % 3600) / 60) 分钟")
-                        .font(AppType.ui(16))
+                    Text("\((total % 86400) / 3600) 小时 \((total % 3600) / 60) 分")
+                        .font(AppType.ui(Typo.headline))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                 } else {
@@ -2956,7 +2956,7 @@ struct QuickActionButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(AppType.ui(12.5, .medium))
+                .font(AppType.ui(Typo.footnote, .medium))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .foregroundStyle(.primary.opacity(0.78))
@@ -3179,7 +3179,7 @@ struct CountdownEditor: View {
                                         .overlay {
                                             if isColorSelected(option) {
                                                 Image(systemName: "checkmark")
-                                                    .font(AppType.caption(10, weight: .bold))
+                                                    .font(AppType.caption(11, weight: .bold))
                                                     .foregroundStyle(.white)
                                             }
                                         }
@@ -3322,7 +3322,7 @@ private struct HomeHourTimeline: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text("时间轴")
-                    .font(AppType.title(20))
+                    .font(AppType.title(Typo.headline))
                 Spacer()
                 Button("回到今天") {
                     resetViewport()
@@ -3615,7 +3615,7 @@ private struct HomeHourTimeline: View {
                 let isToday = beijingCalendar.isDateInToday(day)
                 VStack(spacing: 2) {
                     Text(weekdayLabel(day))
-                        .font(AppType.caption(10.5, weight: .medium))
+                        .font(AppType.caption(11, weight: .medium))
                         .foregroundStyle(Color.secondary.opacity(0.82))
                     Text("\(beijingCalendar.component(.day, from: day))")
                         .font(.system(size: 14, weight: isToday ? .semibold : .medium, design: .rounded))
@@ -3682,7 +3682,7 @@ private struct HomeHourTimeline: View {
             Group {
                 if height > 24 && laneWidth > 46 {
                     Text(block.title)
-                        .font(AppType.caption(10.5, weight: .medium))
+                        .font(AppType.caption(11, weight: .medium))
                         .lineLimit(1)
                         .foregroundStyle(Color.primary.opacity(0.82))
                         .padding(.horizontal, 6)

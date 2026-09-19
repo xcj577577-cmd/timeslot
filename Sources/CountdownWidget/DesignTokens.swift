@@ -930,7 +930,7 @@ struct TimeSlotGlowMeter: View {
                 Image(systemName: phaseIcon)
                 Text(phaseTitle)
             }
-            .font(AppType.ui(14, .medium))
+            .font(AppType.ui(Typo.body, .medium))
             .foregroundStyle(color)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
