@@ -683,7 +683,9 @@ final class CountdownStore: ObservableObject {
     }
 
     func taskColor(for title: String) -> Color {
-        Color(hex: taskColorHex(for: title))
+        // 统一走展示色系统：旧版存下的高饱和色会映射到当前调色板，
+        // 并按浅色/深色外观取到对比度达标的那一档。
+        DataSignal.color(hex: taskColorHex(for: title))
     }
 
     func addPomodoroTask(title: String) {
@@ -917,6 +919,17 @@ final class CountdownStore: ObservableObject {
             longBreakMinutes: durations.longBreakMinutes,
             roundsBeforeLongBreak: pomodoro.roundsBeforeLongBreak,
             weeklyFocusGoalMinutes: pomodoro.weeklyFocusGoalMinutes
+        )
+    }
+
+    /// 只改周目标时不用把整组番茄钟节奏重新传一遍，避免周目标入口跟节奏设置漂移。
+    func updateWeeklyFocusGoal(hours: Int) {
+        updatePomodoroSettings(
+            focusMinutes: pomodoro.focusMinutes,
+            shortBreakMinutes: pomodoro.shortBreakMinutes,
+            longBreakMinutes: pomodoro.longBreakMinutes,
+            roundsBeforeLongBreak: pomodoro.roundsBeforeLongBreak,
+            weeklyFocusGoalMinutes: hours * 60
         )
     }
 

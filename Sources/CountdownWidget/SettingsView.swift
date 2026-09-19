@@ -7,6 +7,7 @@ struct AppSettingsPage: View {
     @ObservedObject var store: CountdownStore
     @Environment(\.colorScheme) private var colorScheme
     @State private var showingPomodoroSettings = false
+    @State private var showingWeeklyGoalSettings = false
     @State private var showingClearHistoryConfirmation = false
     @State private var pendingImport: BackupPayload?
     @State private var showingImportConfirmation = false
@@ -167,13 +168,18 @@ settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
                     }
                 }
 
-                settingsCard(title: "番茄钟节奏", icon: "timer") {
+                settingsCard(title: "番茄钟与周目标", icon: "timer") {
                     HStack {
                         settingLabel(
                             title: "当前节奏",
                             subtitle: rhythmSummary
                         )
                         Spacer()
+                        Button("修改周目标…") {
+                            showingWeeklyGoalSettings = true
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("timeslot.settings.weekly-goal.edit")
                         Button("调整…") {
                             showingPomodoroSettings = true
                         }
@@ -247,6 +253,12 @@ settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
                             .font(AppType.caption(weight: .medium))
                             .foregroundStyle(.secondary)
                     }
+
+                    Divider()
+
+                    Text("⌘, 会在独立窗口打开同一个设置页，两处修改即时同步。")
+                        .font(AppType.caption())
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, Space.xxl)
@@ -277,6 +289,14 @@ settingsCard(title: "桌面小组件", icon: "macwindow.on.rectangle") {
                     roundsBeforeLongBreak: rounds,
                     weeklyFocusGoalMinutes: weeklyGoalHours * 60
                 )
+            }
+        }
+        .sheet(isPresented: $showingWeeklyGoalSettings) {
+            WeeklyGoalSettingsView(
+                goalHours: max(1, store.pomodoro.weeklyFocusGoalMinutes / 60),
+                accent: store.accentPreset.color
+            ) { hours in
+                store.updateWeeklyFocusGoal(hours: hours)
             }
         }
         .alert("清空全部阶段记录？", isPresented: $showingClearHistoryConfirmation) {

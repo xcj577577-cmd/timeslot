@@ -58,6 +58,7 @@ struct ContentView: View {
     @State private var showingEdit = false
     @State private var showingWidgetHelp = false
     @State private var showingShortcuts = false
+    @State private var showingWeeklyGoalSettings = false
     @State private var pendingDelete: CountdownItem?
     @State private var searchText = ""
     @State private var countdownFilter: CountdownFilter = .all
@@ -109,7 +110,6 @@ struct ContentView: View {
                         }
                     } else {
                         HStack(alignment: .top, spacing: 14) {
-                            if selectedSection == .countdown { sidebar }
                             detail
                         }
                     }
@@ -155,6 +155,14 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingShortcuts) {
             KeyboardShortcutsSheet()
+        }
+        .sheet(isPresented: $showingWeeklyGoalSettings) {
+            WeeklyGoalSettingsView(
+                goalHours: max(1, store.pomodoro.weeklyFocusGoalMinutes / 60),
+                accent: store.accentPreset.color
+            ) { hours in
+                store.updateWeeklyFocusGoal(hours: hours)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .newCountdownRequested)) { _ in
             showingAdd = true
@@ -673,6 +681,8 @@ struct ContentView: View {
             HStack(alignment: .top, spacing: Space.xl) {
                 homeCalendarBoard
                     .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("今日时间轴")
 
                 homeSignalDeck
                     .frame(width: 300)
@@ -685,8 +695,8 @@ struct ContentView: View {
     }
 
     private var homeVisualOverview: some View {
-        let teal = Color(hex: "319F98")
-        let gold = Color(hex: "C69A48")
+        let teal = BrandPalette.teal
+        let gold = BrandPalette.gold
         let points = weekTrendPoints
         let progress = min(1, homeWeekFocusSeconds / max(1, Double(store.pomodoro.weeklyFocusGoalMinutes * 60)))
         return HStack(alignment: .top, spacing: 14) {
@@ -720,11 +730,13 @@ struct ContentView: View {
                     Circle().fill(gold).frame(width: 6, height: 6).padding(.leading, 8)
                     Text("今天")
                     Spacer()
-                }.font(AppType.caption(10)).foregroundStyle(.secondary)
+                }.font(AppType.caption(11)).foregroundStyle(.secondary)
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(colorScheme == .dark ? Color.white.opacity(0.04) : Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 18))
+            .background(Surface.board, in: RoundedRectangle(cornerRadius: 18))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("本周学习节奏，共记录 \(homeFocusDurationText(homeWeekFocusSeconds))，周一至周日")
 
             VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 12) {
@@ -753,9 +765,27 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(16).background(teal.opacity(colorScheme == .dark ? 0.09 : 0.035), in: RoundedRectangle(cornerRadius: 18))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("今日投入 \(homeFocusDurationText(homeTodayFocusSeconds))\(todayTaskBreakdown.isEmpty ? "" : "，" + todayTaskBreakdown.map(\.title).joined(separator: "、"))")
 
             VStack(alignment: .leading, spacing: 12) {
-                Label("本周目标", systemImage: "target").foregroundStyle(gold)
+                HStack(spacing: Space.s) {
+                    Label("本周目标", systemImage: "target").foregroundStyle(gold)
+                    Spacer(minLength: 0)
+                    Button {
+                        showingWeeklyGoalSettings = true
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(AppType.caption(11, weight: .semibold))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(TimeSlotPressableStyle())
+                    .foregroundStyle(gold)
+                    .help("修改每周专注目标")
+                    .accessibilityLabel("修改每周专注目标")
+                    .accessibilityIdentifier("timeslot.home.weekly-goal.edit")
+                }
                 HStack(spacing: 16) {
                     ZStack {
                         Circle().stroke(gold.opacity(0.18), lineWidth: 8)
@@ -772,6 +802,8 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(16).background(gold.opacity(colorScheme == .dark ? 0.09 : 0.035), in: RoundedRectangle(cornerRadius: 18))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("本周目标，已完成 \(String(format: "%.1f", homeWeekFocusSeconds / 3600)) 小时，目标 \(max(1, store.pomodoro.weeklyFocusGoalMinutes / 60)) 小时，完成 \(Int(progress * 100))%")
             }.frame(width: 300)
         }
         .font(AppType.ui(12, .medium))
@@ -780,7 +812,6 @@ struct ContentView: View {
     private var homeCommandDeck: some View {
         let next = upcomingCountdowns.first ?? store.selectedItem ?? store.items.first
         let state = store.pomodoro
-        let goalHours = max(1, state.weeklyFocusGoalMinutes / 60)
 
         return HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: Space.m) {
@@ -818,6 +849,7 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: Space.s) {
                             Text(next.title)
                                 .font(AppType.pageTitle(26))
+                                .tracking(-0.3)
                                 .lineLimit(1)
                             HStack(alignment: .lastTextBaseline, spacing: Space.m) {
                                 Text(remaining > 0 ? homeRemaining(remaining) : "已到达")
@@ -832,7 +864,7 @@ struct ContentView: View {
                             }
                             TimeSlotProgressBar(
                                 progress: progress,
-                                color: DataSignal.color(hex: next.colorHex, isDark: colorScheme == .dark),
+                                color: DataSignal.color(hex: next.colorHex),
                                 height: 8,
                                 showsKnob: true,
                                 showsMilestones: true
@@ -845,6 +877,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: Space.s) {
                         Text("建立一个目标")
                             .font(AppType.pageTitle(26))
+                            .tracking(-0.3)
                         Text("让最重要的截止日固定在工作台上")
                             .font(AppType.ui(Typo.footnote))
                             .foregroundStyle(.secondary)
@@ -853,6 +886,7 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
 
             Divider()
                 .frame(height: 154)
@@ -869,10 +903,11 @@ struct ContentView: View {
                             selectedSection = .pomodoro
                         }
                     } label: {
-                        Image(systemName: "arrow.up.right")
-                            .font(AppType.ui(13, .semibold))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
+                        Label("打开专注", systemImage: "arrow.up.right")
+                            .font(AppType.ui(12.5, .medium))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .foregroundStyle(.primary.opacity(0.78))
                     }
                     .buttonStyle(TimeSlotPressableStyle())
                     .inkPill()
@@ -890,17 +925,18 @@ struct ContentView: View {
                     homeFocusReadout(state: state, date: Date())
                 }
 
-                Text(String(format: "本周 %.1f / %d 小时", homeWeekFocusSeconds / 3600, goalHours))
+                Text(weekGoalDeltaText)
                     .font(AppType.caption())
                     .foregroundStyle(.secondary)
             }
             .frame(width: 260, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
         .background {
             RoundedRectangle(cornerRadius: Radius.board, style: .continuous)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.055) : Color.white.opacity(0.82))
+                .fill(Surface.board)
         }
         .overlay {
             RoundedRectangle(cornerRadius: Radius.board, style: .continuous)
@@ -909,19 +945,32 @@ struct ContentView: View {
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06), radius: 16, y: 6)
     }
 
-    private var homeSignalDeck: some View {
-        let todaySeconds = homeTodayFocusSeconds
-        let weekHours = homeWeekFocusSeconds / 3600
+    /// 首页只讲「离目标还差多少」，不再重复一遍「本周 x / y 小时」的原始数字。
+    private var weekGoalDeltaText: String {
         let goalHours = max(1, store.pomodoro.weeklyFocusGoalMinutes / 60)
+        let remaining = Double(goalHours) - homeWeekFocusSeconds / 3600
+        if remaining <= 0 {
+            return "已达成本周 \(goalHours) 小时目标"
+        }
+        return String(format: "距周目标还差 %.1f 小时", remaining)
+    }
+
+    private var homeSignalDeck: some View {
+        let bestDay = weekTrendPoints.max { $0.minutes < $1.minutes }
+        let bestDayMinutes = bestDay?.minutes ?? 0
+        let bestDayDetail: String = {
+            guard bestDayMinutes > 0, let bestDay else { return "本周还没有记录" }
+            return "\(beijingDateString(bestDay.day, dateStyle: .abbreviated, timeStyle: .omitted)) · 本周最高"
+        }()
         let topSlot = timeSlotBreakdown.max { $0.minutes < $1.minutes }
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label("工作读数", systemImage: "waveform.path.ecg")
+                Label("专注节奏", systemImage: "waveform.path.ecg")
                     .font(AppType.ui(Typo.footnote, .medium))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("5 项信号")
+                Text("3 项")
                     .font(AppType.caption(10.5, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -930,35 +979,19 @@ struct ContentView: View {
             Divider()
 
             homeSignalRow(
-                label: "今日专注",
-                value: homeFocusDurationText(todaySeconds),
-                detail: todayTaskBreakdown.prefix(2).map(\.title).joined(separator: " · ").isEmpty
-                    ? "尚未记录专注"
-                    : todayTaskBreakdown.prefix(2).map(\.title).joined(separator: " · "),
+                label: "连续专注",
+                value: "\(streakDays) 天",
+                detail: streakDays > 0 ? "今天也在延续" : "从一次专注开始",
                 color: DataGradient.base(0)
             )
 
             Divider()
 
-            homeTaskDistributionRow
-
-            Divider()
-
             homeSignalRow(
-                label: "连续专注",
-                value: "\(streakDays) 天",
-                detail: streakDays > 0 ? "今天也在延续" : "从一次专注开始",
+                label: "最佳单日",
+                value: bestDayMinutes > 0 ? homeFocusDurationText(bestDayMinutes * 60) : "--",
+                detail: bestDayDetail,
                 color: DataGradient.base(1)
-            )
-
-            Divider()
-
-            homeSignalRow(
-                label: "本周累计",
-                value: String(format: "%.1f 小时", weekHours),
-                detail: String(format: "目标 %d 小时", goalHours),
-                color: DataGradient.base(2),
-                progress: CGFloat(min(1, homeWeekFocusSeconds / max(1, Double(goalHours * 3600))))
             )
 
             Divider()
@@ -967,7 +1000,7 @@ struct ContentView: View {
                 label: "高效时段",
                 value: topSlot?.label ?? "--",
                 detail: topSlot.map { homeFocusDurationText($0.minutes * 60) } ?? "近 7 天暂无数据",
-                color: DataGradient.base(3)
+                color: DataGradient.base(2)
             )
 
             Divider()
@@ -989,76 +1022,15 @@ struct ContentView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
         .glassBoard(wash: BrandPalette.teal)
-    }
-
-    private var homeTaskDistributionRow: some View {
-        let points = todayTaskBreakdown
-        let total = max(1, points.reduce(0) { $0 + $1.minutes })
-
-        return VStack(alignment: .leading, spacing: Space.s) {
-            HStack(alignment: .firstTextBaseline) {
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(DataGradient.base(4))
-                    .frame(width: 3, height: 15)
-                Text("任务分布")
-                    .font(AppType.caption(11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(points.isEmpty ? "--" : "今日")
-                    .font(AppType.caption(10.5, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-
-            if points.isEmpty {
-                Text("完成一个阶段后显示任务占比")
-                    .font(AppType.caption(10.5))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            } else {
-                VStack(spacing: 5) {
-                    ForEach(Array(points.prefix(2).enumerated()), id: \.offset) { index, point in
-                        HStack(spacing: Space.s) {
-                            Text(point.title)
-                                .font(AppType.caption(10.5, weight: .medium))
-                                .foregroundStyle(.primary.opacity(0.78))
-                                .lineLimit(1)
-                                .frame(width: 44, alignment: .leading)
-                            GeometryReader { proxy in
-                                ZStack(alignment: .leading) {
-                                    Capsule()
-                                        .fill(Color.primary.opacity(0.08))
-                                    Capsule()
-                                        .fill(point.color.opacity(0.88))
-                                        .frame(width: proxy.size.width * CGFloat(point.minutes / total))
-                                }
-                            }
-                            .frame(height: 5)
-                            Text("\(Int((point.minutes / total) * 100))%")
-                                .font(AppType.caption(10, weight: .medium))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                                .frame(width: 30, alignment: .trailing)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.vertical, Space.s)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("今日任务分布")
-        .accessibilityValue(
-            points.isEmpty
-                ? "暂无记录"
-                : points.prefix(2).map { "\($0.title) \(Int(($0.minutes / total) * 100))%" }.joined(separator: "，")
-        )
+        .accessibilityLabel("专注节奏：连续专注 \(streakDays) 天，\(bestDayDetail)，高效时段 \(topSlot?.label ?? "暂无数据")")
     }
 
     private func homeSignalRow(
         label: String,
         value: String,
         detail: String,
-        color: Color,
-        progress: CGFloat? = nil
+        color: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(alignment: .firstTextBaseline, spacing: Space.s) {
@@ -1080,10 +1052,6 @@ struct ContentView: View {
                 .font(AppType.caption(10.5))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            if let progress {
-                TimeSlotProgressBar(progress: progress, color: color, height: 4, showsKnob: false)
-                    .padding(.top, 1)
-            }
         }
         .padding(.vertical, Space.m)
     }
@@ -1614,6 +1582,18 @@ struct ContentView: View {
                     Spacer()
 
                     if let selected = store.selectedItem {
+                        Menu {
+                            ForEach(store.items) { item in
+                                Button(item.title) { store.selectedID = item.id }
+                            }
+                            Divider()
+                            Button("新建倒计时") { showingAdd = true }
+                        } label: {
+                            Label("切换目标", systemImage: "list.bullet")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .accessibilityIdentifier("timeslot.countdown.targets")
                         HStack(spacing: Space.s) {
                             Circle()
                                 .fill(selected.isPaused ? Color.secondary.opacity(0.42) : Color.primary)
@@ -1627,11 +1607,6 @@ struct ContentView: View {
                         .background(Surface.nested, in: Capsule())
 
                         QuickActionButton(
-                            title: selected.isPinned ? "已固定" : "固定到桌面",
-                            icon: selected.isPinned ? "checkmark.circle.fill" : "rectangle.on.rectangle",
-                            tint: accent
-                        ) { pinToDesktop(selected) }
-                        QuickActionButton(
                             title: selected.isPaused ? "继续" : "暂停",
                             icon: selected.isPaused ? "play.fill" : "pause.fill",
                             tint: accent
@@ -1641,18 +1616,32 @@ struct ContentView: View {
                         }
                         .accessibilityIdentifier("timeslot.countdown.edit")
 
-                        Button(role: .destructive) {
-                            pendingDelete = selected
+                        headerGhostButton(title: "新建", systemImage: "plus") {
+                            showingAdd = true
+                        }
+                        .accessibilityIdentifier("timeslot.countdown.add")
+
+                        Menu {
+                            Button(
+                                selected.isPinned ? "从桌面小组件移除" : "固定到桌面小组件",
+                                systemImage: selected.isPinned ? "rectangle.slash" : "rectangle.on.rectangle"
+                            ) {
+                                pinToDesktop(selected)
+                            }
+                            Divider()
+                            Button("删除倒计时", role: .destructive) {
+                                pendingDelete = selected
+                            }
                         } label: {
-                            Image(systemName: "trash")
+                            Image(systemName: "ellipsis")
                                 .font(AppType.caption(12, weight: .medium))
                                 .frame(width: 32, height: 32)
                                 .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(TimeSlotPressableStyle())
-                        .background(circleChrome)
-                        .accessibilityLabel("删除倒计时")
-                        .accessibilityIdentifier("timeslot.countdown.delete")
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .accessibilityLabel("更多操作")
+                        .accessibilityIdentifier("timeslot.countdown.more")
                     }
                 }
                 .padding(.horizontal, Space.xxl)
@@ -1690,13 +1679,13 @@ struct ContentView: View {
                     ScrollView {
                         HStack(alignment: .top, spacing: 0) {
                             CountdownHero(item: selected, accent: accent)
-                                .frame(maxWidth: .infinity, minHeight: 430)
+                                .frame(maxWidth: .infinity)
 
                             Divider()
                                 .padding(.vertical, Space.xl)
 
                             countdownInfoPanel(selected)
-                                .frame(width: 272)
+                                .frame(width: 232)
                         }
                         .frame(maxWidth: 1040)
                         .frame(maxWidth: .infinity)
@@ -1745,15 +1734,16 @@ struct ContentView: View {
             }
 
             Divider().padding(.vertical, Space.m)
-            CountdownTimelineCard(item: item, accent: accent)
+            VStack(alignment: .leading, spacing: Space.s) {
+                Text("建立于")
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+                Text(beijingDateString(item.createdAt, dateStyle: .long, timeStyle: .omitted))
+                    .font(AppType.ui(Typo.footnote, .medium))
+            }
             Divider().padding(.vertical, Space.m)
 
             VStack(alignment: .leading, spacing: Space.m) {
-                countdownStatusRow(
-                    title: "运行状态",
-                    value: item.isPaused ? "已暂停" : (item.remaining(at: Date()) > 0 ? "进行中" : "已到达"),
-                    icon: item.isPaused ? "pause.fill" : "bolt.fill"
-                )
                 countdownStatusRow(
                     title: "桌面小组件",
                     value: item.isPinned ? "当前展示" : "未展示",
@@ -1883,7 +1873,7 @@ struct CountdownRoadmapTimelineView: View {
             result.append(RoadmapGroup(title: "未来更长时间", icon: "star.fill", color: DataGradient.base(4), items: later))
         }
         if !completed.isEmpty {
-            result.append(RoadmapGroup(title: "已到达目标", icon: "checkmark.circle.fill", color: .green, items: completed))
+            result.append(RoadmapGroup(title: "已到达目标", icon: "checkmark.circle.fill", color: BrandPalette.success, items: completed))
         }
         return result
     }
@@ -1906,6 +1896,8 @@ struct CountdownRoadmapTimelineView: View {
                     .frame(maxWidth: .infinity, minHeight: 300)
                 } else {
                     VStack(alignment: .leading, spacing: Space.xl) {
+                        horizonAxis
+
                         ForEach(groups) { group in
                             VStack(alignment: .leading, spacing: Space.m) {
                                 HStack(spacing: Space.s) {
@@ -1943,6 +1935,73 @@ struct CountdownRoadmapTimelineView: View {
             .scrollIndicators(.hidden)
         }
     }
+
+    /// 顶部全景轴：把「今天 → 最远目标」画成一根真实时间轴，
+    /// 让「时间流全景」不再只是分组列表，每个目标的位置就是它的到期远近。
+    private var horizonAxis: some View {
+        let now = Date()
+        let active = store.items
+            .filter { $0.remaining(at: now) > 0 }
+            .sorted { $0.targetDate < $1.targetDate }
+        let horizon = active.last?.targetDate ?? now.addingTimeInterval(30 * 86_400)
+        let span = max(1, horizon.timeIntervalSince(now))
+
+        return VStack(alignment: .leading, spacing: Space.m) {
+            HStack {
+                Label("时间轴", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(AppType.ui(Typo.footnote, .medium))
+                Spacer()
+                Text("今天 → \(beijingDateString(horizon, dateStyle: .abbreviated, timeStyle: .omitted))")
+                    .font(AppType.caption())
+                    .foregroundStyle(.secondary)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Surface.track)
+                        .frame(height: 4)
+                        .position(x: proxy.size.width / 2, y: 9)
+
+                    ForEach(active) { item in
+                        let ratio = min(1, max(0, item.targetDate.timeIntervalSince(now) / span))
+                        Circle()
+                            .fill(DataSignal.color(hex: item.colorHex))
+                            .frame(width: 11, height: 11)
+                            .overlay(Circle().stroke(Color.primary.opacity(0.18), lineWidth: 1))
+                            .position(x: max(6, min(proxy.size.width - 6, proxy.size.width * ratio)), y: 9)
+                            .help("\(item.title) · \(beijingDateString(item.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))")
+                    }
+
+                    Circle()
+                        .fill(Color.primary.opacity(0.55))
+                        .frame(width: 6, height: 6)
+                        .position(x: 3, y: 9)
+                }
+            }
+            .frame(height: 18)
+
+            HStack {
+                Text("今天")
+                Spacer()
+                if let last = active.last {
+                    Text("最远 \(last.title)")
+                }
+            }
+            .font(AppType.caption(10.5))
+            .foregroundStyle(.secondary)
+        }
+        .padding(Space.m)
+        .cardSurface()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            active.isEmpty
+                ? "时间轴暂无目标"
+                : "时间轴：今天起，" + active.map {
+                    "\($0.title) \(beijingDateString($0.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))"
+                }.joined(separator: "，")
+        )
+    }
 }
 
 private struct RoadmapItemRow: View {
@@ -1956,7 +2015,7 @@ private struct RoadmapItemRow: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var itemColor: Color {
-        DataSignal.color(hex: item.colorHex, isDark: colorScheme == .dark)
+        DataSignal.color(hex: item.colorHex)
     }
 
     var body: some View {
@@ -1993,7 +2052,7 @@ private struct RoadmapItemRow: View {
                     StatusPillBadge(
                         title: item.isPaused ? "已暂停" : (isDone ? "已达成" : formatRemaining(remaining)),
                         icon: item.isPaused ? "pause.circle" : (isDone ? "checkmark.circle.fill" : nil),
-                        color: item.isPaused ? .secondary : (isDone ? .green : itemColor)
+                        color: item.isPaused ? .secondary : (isDone ? BrandPalette.success : itemColor)
                     )
                 }
 
@@ -2371,12 +2430,13 @@ private struct InteractiveWidgetSimulatorView: View {
 
     var body: some View {
         VStack(spacing: Space.l) {
-            Picker("小组件尺寸", selection: $simulatorSize) {
-                ForEach(WidgetSimulatorSize.allCases) { size in
-                    Text(size.rawValue).tag(size)
-                }
-            }
-            .pickerStyle(.segmented)
+            TimeSlotSegmentedControl(
+                options: WidgetSimulatorSize.allCases.map {
+                    SegmentOption(id: $0.rawValue, title: $0.rawValue, value: $0)
+                },
+                selection: $simulatorSize,
+                tint: store.accentPreset.color
+            )
             .padding(.horizontal, Space.xl)
 
             // 预览只模拟桌面层级，避免另一套装饰性壁纸语言抢走组件本身。
@@ -2407,7 +2467,7 @@ private struct InteractiveWidgetSimulatorView: View {
     private func renderedSimulatorWidget(at date: Date) -> some View {
         let item = activeItem
         let accent = item.map {
-            DataSignal.color(hex: $0.colorHex, isDark: colorScheme == .dark)
+            DataSignal.color(hex: $0.colorHex)
         } ?? store.accentPreset.color
         let title = item?.title ?? "重要时刻"
 
@@ -2716,14 +2776,15 @@ struct CountdownHero: View {
     private func card(remaining: TimeInterval) -> some View {
         let isDone = remaining <= 0
         let percent = Int((progressValue(remaining) * 100).rounded())
-        let isLive = !item.isPaused && !isDone
+        let total = max(0, Int(ceil(remaining)))
+        let days = total / 86400
 
         return VStack(spacing: Space.l) {
             if isDone {
                 VStack(spacing: Space.s) {
                     Image(systemName: "flag.checkered.circle.fill")
                         .font(AppType.ui(38))
-                        .foregroundStyle(Color.green)
+                        .foregroundStyle(BrandPalette.success)
                     Text("目标达成")
                         .font(AppType.title(Typo.sheetTitle))
                     Text("已于 \(beijingDateString(item.targetDate, dateStyle: .long, timeStyle: .shortened)) 到达")
@@ -2735,15 +2796,35 @@ struct CountdownHero: View {
                     .font(AppType.ui(Typo.body, .medium))
                     .foregroundStyle(.secondary)
 
-                TimeSlotGlowMeter(
-                    progress: progressValue(remaining),
-                    color: accent,
-                    phaseTitle: item.isPaused ? "已暂停" : "倒计时",
-                    phaseIcon: item.isPaused ? "pause.fill" : "calendar.badge.clock",
-                    timeText: countdownReadout(remaining),
-                    isRunning: isLive,
-                    glowBarWidth: 300
+                if days > 0 {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("\(days)")
+                            .font(.system(size: 100, weight: .light, design: .rounded))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.3)
+                        Text("天")
+                            .font(AppType.ui(20))
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                    }
+                    Text("\((total % 86400) / 3600) 小时 · \((total % 3600) / 60) 分钟")
+                        .font(AppType.ui(16))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(countdownReadout(remaining))
+                        .font(AppType.timer(64))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.3)
+                }
+                TimeSlotProgressBar(
+                    progress: progressValue(remaining), color: accent,
+                    height: 5, showsKnob: true, animatesProgress: false
                 )
+                .padding(.top, 20)
+                .frame(maxWidth: 360)
             }
 
             if !isDone {
@@ -2756,14 +2837,11 @@ struct CountdownHero: View {
                         .font(AppType.caption(12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: 300)
+                .frame(maxWidth: 360)
             }
 
-            Text(isDone ? "这一刻已经抵达" : "保持节奏，时间正在向目标收拢")
-                .font(AppType.caption())
-                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 390, alignment: .center)
+        .frame(maxWidth: .infinity, minHeight: 330, alignment: .center)
         .padding(.horizontal, Space.xl)
         .overlay {
             ConfettiEffectView(isActive: isDone)
@@ -2792,7 +2870,7 @@ struct CountdownHero: View {
 
     private func progressValue(_ remaining: TimeInterval) -> CGFloat {
         let span = max(item.totalDuration, 1)
-        return remaining <= 0 ? 1 : min(1, max(0.04, 1 - remaining / span))
+        return remaining <= 0 ? 1 : min(1, max(0, 1 - remaining / span))
     }
 }
 
@@ -2843,7 +2921,9 @@ struct CountdownTimelineCard: View {
                     .font(AppType.caption())
                     .foregroundStyle(.secondary)
                 Text(beijingDateString(item.createdAt, dateStyle: .abbreviated, timeStyle: .omitted))
-                    .font(AppType.ui(Typo.footnote, .medium))
+                    .font(AppType.caption(11, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
 
             Spacer()
@@ -2853,7 +2933,9 @@ struct CountdownTimelineCard: View {
                     .font(AppType.caption())
                     .foregroundStyle(.secondary)
                 Text(beijingDateString(item.targetDate, dateStyle: .abbreviated, timeStyle: .omitted))
-                    .font(AppType.ui(Typo.footnote, .medium))
+                    .font(AppType.caption(11, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             }
             Text("已行进 \(elapsedDays) 天 · 还剩 \(max(0, remainingDays)) 天")
@@ -3084,7 +3166,7 @@ struct CountdownEditor: View {
                             } label: {
                                 VStack(spacing: 6) {
                                     Circle()
-                                        .fill(DataSignal.color(hex: option.hex, isDark: colorScheme == .dark))
+                                        .fill(DataSignal.color(hex: option.hex))
                                         .frame(width: 28, height: 28)
                                         .overlay {
                                             Circle()
@@ -3117,7 +3199,7 @@ struct CountdownEditor: View {
                 // 实时预览卡片
                 HStack(spacing: Space.m) {
                     Circle()
-                        .fill(DataSignal.color(hex: colorHex, isDark: colorScheme == .dark))
+                        .fill(DataSignal.color(hex: colorHex))
                         .frame(width: 10, height: 10)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(normalizedTitle.isEmpty ? "倒计时预览" : normalizedTitle)
@@ -3129,7 +3211,7 @@ struct CountdownEditor: View {
                     }
                     Spacer()
                     Image(systemName: "rectangle.3.group")
-                        .foregroundStyle(DataSignal.color(hex: colorHex, isDark: colorScheme == .dark))
+                        .foregroundStyle(DataSignal.color(hex: colorHex))
                 }
                 .padding(Space.m)
                 .nestedSurface()
@@ -3147,7 +3229,7 @@ struct CountdownEditor: View {
                     .keyboardShortcut(.cancelAction)
                 Button(isEditing ? "保存修改" : "创建倒计时") { save() }
                     .buttonStyle(.borderedProminent)
-                    .tint(DataSignal.color(hex: colorHex, isDark: colorScheme == .dark))
+                    .tint(DataSignal.color(hex: colorHex))
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
             }
@@ -3765,8 +3847,7 @@ private struct HomeHourTimeline: View {
             let color = DataSignal.color(
                 hex: colorHex?.isEmpty == false
                     ? colorHex!
-                    : PomodoroTaskPalette.fallbackColorHex(for: title),
-                isDark: colorScheme == .dark
+                    : PomodoroTaskPalette.fallbackColorHex(for: title)
             )
             while cursor < finish {
                 let day = beijingCalendar.startOfDay(for: cursor)

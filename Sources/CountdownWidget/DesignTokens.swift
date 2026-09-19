@@ -39,30 +39,42 @@ func beijingDateString(
 
 /// 品牌色只在这里定义。Logo、强调色与状态色都从这组颜色派生，
 /// 避免主应用、表单和小组件出现“差不多的青绿”。
+/// 数据色一律给出「浅色压暗 / 深色提亮」两档，让同一个色名在两种外观下都过对比度。
 enum BrandPalette {
     static let ink = Color(hex: "#1A1A1F")
     static let deepTeal = Color(hex: "#29423E")
-    static let teal = Color(hex: "#55A99C")
-    static let mint = Color(hex: "#A0D0C5")
-    static let gold = Color(hex: "#C7A35A")
-    static let goldHighlight = Color(hex: "#E7D6A2")
-    static let coral = Color(hex: "#C07862")
-    static let indigo = Color(hex: "#8B83A6")
+    static let teal = dual(light: "#2F7A6F", dark: "#55A99C")
+    static let mint = dual(light: "#5E9A8D", dark: "#A0D0C5")
+    static let gold = dual(light: "#8A6A22", dark: "#C7A35A")
+    static let goldHighlight = dual(light: "#A98434", dark: "#E7D6A2")
+    static let coral = dual(light: "#96513A", dark: "#C07862")
+    static let indigo = dual(light: "#665E85", dark: "#8B83A6")
+    static let success = dual(light: "#2F7D46", dark: "#6FBF8A")
+
+    /// NSColor 的 dynamic provider：同一枚颜色随外观解析成两档色值，
+    /// 文字、图表与图元会自动跟随外观，不需要在各处手写 colorScheme 分支。
+    static func dual(light: String, dark: String) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(hex: isDark ? dark : light)
+        })
+    }
 }
 
 /// 数据洞察的信号调色板：低饱和、可区分，避免统计页面变成彩色装饰墙。
 /// 顺序固定，任务/时段的分类色按序取用，保证图例与图表一致。
+/// 每档两枚：主色可当文字用（≥4.5:1），浅色只做大色块与渐变（≥3:1）。
 enum DataGradient {
     static func palette(_ index: Int) -> [Color] {
         let palettes: [[Color]] = [
-            [Color(hex: "#55A99C"), Color(hex: "#A0D0C5")],       // 青绿
-            [Color(hex: "#C7A35A"), Color(hex: "#E7D6A2")],       // 金
-            [Color(hex: "#C07862"), Color(hex: "#D9A18E")],       // 珊瑚
-            [Color(hex: "#879C87"), Color(hex: "#B8C5B4")],       // 苔绿
-            [Color(hex: "#8B83A6"), Color(hex: "#B8B1C8")],       // 紫灰
-            [Color(hex: "#B47D89"), Color(hex: "#D2AAB3")],       // 玫瑰灰
-            [Color(hex: "#A8894A"), Color(hex: "#D0B978")],       // 深金
-            [Color(hex: "#B98960"), Color(hex: "#D1B18E")]        // 琥珀灰
+            [BrandPalette.dual(light: "#2F7A6F", dark: "#55A99C"), BrandPalette.dual(light: "#5E9A8D", dark: "#A0D0C5")],  // 青绿
+            [BrandPalette.dual(light: "#8A6A22", dark: "#C7A35A"), BrandPalette.dual(light: "#A98434", dark: "#E7D6A2")],  // 金
+            [BrandPalette.dual(light: "#96513A", dark: "#C07862"), BrandPalette.dual(light: "#B4735A", dark: "#D9A18E")],  // 珊瑚
+            [BrandPalette.dual(light: "#5C735C", dark: "#879C87"), BrandPalette.dual(light: "#7E947C", dark: "#B8C5B4")],  // 苔绿
+            [BrandPalette.dual(light: "#665E85", dark: "#8B83A6"), BrandPalette.dual(light: "#8A82A6", dark: "#B8B1C8")],  // 紫灰
+            [BrandPalette.dual(light: "#8C5563", dark: "#B47D89"), BrandPalette.dual(light: "#A8707E", dark: "#D2AAB3")],  // 玫瑰灰
+            [BrandPalette.dual(light: "#7A6229", dark: "#A8894A"), BrandPalette.dual(light: "#96793B", dark: "#D0B978")],  // 深金
+            [BrandPalette.dual(light: "#8A5F38", dark: "#B98960"), BrandPalette.dual(light: "#A87B52", dark: "#D1B18E")]   // 琥珀灰
         ]
         return palettes[index % palettes.count]
     }
@@ -94,27 +106,58 @@ enum DataSignal {
         presentationHexByStoredHex[storedHex.uppercased()] ?? storedHex
     }
 
-    static func color(hex storedHex: String, isDark: Bool = false) -> Color {
+    /// 展示色同时随外观自适应：深色档在原色基础上提亮、浅色档压暗，
+    /// 直到与各自画布对比度 ≥ 4.5:1，保证任务色当文字用时也读得清。
+    static func color(hex storedHex: String) -> Color {
         let rgba = ColorHex.rgba(from: presentationHex(for: storedHex))
             ?? ColorHex.rgba(from: ColorHex.fallback)
             ?? (red: 0.17, green: 0.55, blue: 0.49, alpha: 1)
-        guard isDark else {
-            return Color(
-                .sRGB,
-                red: Double(rgba.red),
-                green: Double(rgba.green),
-                blue: Double(rgba.blue),
-                opacity: Double(rgba.alpha)
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let rgb = contrastAdjusted(
+                (red: rgba.red, green: rgba.green, blue: rgba.blue),
+                isDark: isDark
+            )
+            return NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: rgba.alpha)
+        })
+    }
+
+    private static let darkCanvas = (red: CGFloat(0x12) / 255, green: CGFloat(0x12) / 255, blue: CGFloat(0x15) / 255)
+    private static let lightCanvas = (red: CGFloat(0xF7) / 255, green: CGFloat(0xF7) / 255, blue: CGFloat(0xF8) / 255)
+
+    private static func contrastAdjusted(
+        _ rgb: (red: CGFloat, green: CGFloat, blue: CGFloat),
+        isDark: Bool
+    ) -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+        let background = isDark ? darkCanvas : lightCanvas
+        let target: CGFloat = isDark ? 1 : 0
+        var amount: CGFloat = 0
+        var adjusted = rgb
+        while contrastRatio(adjusted, background) < 4.5 && amount < 1 {
+            amount = min(1, amount + 0.06)
+            adjusted = (
+                red: rgb.red + (target - rgb.red) * amount,
+                green: rgb.green + (target - rgb.green) * amount,
+                blue: rgb.blue + (target - rgb.blue) * amount
             )
         }
-        let lift: CGFloat = 0.12
-        return Color(
-            .sRGB,
-            red: Double(rgba.red + (1 - rgba.red) * lift),
-            green: Double(rgba.green + (1 - rgba.green) * lift),
-            blue: Double(rgba.blue + (1 - rgba.blue) * lift),
-            opacity: Double(rgba.alpha)
-        )
+        return adjusted
+    }
+
+    private static func contrastRatio(
+        _ rgb: (red: CGFloat, green: CGFloat, blue: CGFloat),
+        _ background: (red: CGFloat, green: CGFloat, blue: CGFloat)
+    ) -> CGFloat {
+        let lhs = relativeLuminance(rgb)
+        let rhs = relativeLuminance(background)
+        return (max(lhs, rhs) + 0.05) / (min(lhs, rhs) + 0.05)
+    }
+
+    private static func relativeLuminance(_ rgb: (red: CGFloat, green: CGFloat, blue: CGFloat)) -> CGFloat {
+        func linear(_ value: CGFloat) -> CGFloat {
+            value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(rgb.red) + 0.7152 * linear(rgb.green) + 0.0722 * linear(rgb.blue)
     }
 }
 
@@ -150,7 +193,7 @@ enum Tracking {
     static let pageTitle: CGFloat = 0.0   // 页面主标题、品牌名
     static let heading: CGFloat = 0.0     // 卡片小节标题
     static let label: CGFloat = 0.2       // caption 小标签
-    static let timer: CGFloat = 0.2       // 计时读数
+    static let timer: CGFloat = 0.0       // 计时读数：大字号下加字距会显松，保持归零
     static let caption: CGFloat = 0.0     // 说明性副文本
 }
 
@@ -174,6 +217,13 @@ enum Surface {
     static let track = Color.primary.opacity(0.11)
     static let gridLine = Color.primary.opacity(0.07)  // 图表网格线
     static let border = Color.primary.opacity(0.10)
+
+    /// 首页看板卡实底：浅色下接近纸白，深色下是一层薄雾。
+    /// 统一从这里取，避免各页手写 white.opacity 后慢慢漂移。
+    static let board = Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return isDark ? NSColor.white.withAlphaComponent(0.045) : NSColor.white.withAlphaComponent(0.85)
+    })
 }
 
 /// 侧栏衬底。工作台左轨直接铺在画布上，不再单独铺一层色板。
@@ -371,6 +421,29 @@ struct TimeSlotPressableStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
             .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+/// 主行动按钮：实心墨面 + 反色文字，每个界面只留给最重要的那一个动作。
+/// 其余动作继续用 inkPill / bordered 幽灵样式，让开始/暂停永远第一眼可见。
+struct TimeSlotPrimaryActionStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 22)
+            .padding(.vertical, 10)
+            .background(
+                Capsule().fill(
+                    colorScheme == .dark ? Color.white.opacity(0.92) : Color.black.opacity(0.86)
+                )
+            )
+            .foregroundStyle(colorScheme == .dark ? Color.black.opacity(0.9) : Color.white)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.35)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
@@ -833,38 +906,6 @@ struct TimeSlotGlowRing: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .animation(reduceMotion ? nil : .linear(duration: 0.08), value: progress)
-    }
-}
-
-// MARK: - 星点背景与光带仪表（Moonshot 式宇宙质感）
-
-/// 静谧星点：极淡的点阵铺在卡片/画布上，缓慢闪烁，不抢内容，只提供宇宙氛围。
-struct StarField: View {
-    var density: Int = 64
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 10 : 0.3)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            Canvas { context, size in
-                for index in 0..<density {
-                    let x = CGFloat((index * 137) % 1000) / 1000 * size.width
-                    let y = CGFloat((index * 331) % 1000) / 1000 * size.height
-                    let radius = CGFloat(1.0 + CGFloat((index * 7) % 10) * 0.16)
-                    // 每颗星独立相位闪烁，幅度更大
-                    let phase = Double((index * 47) % 100) / 100 * .pi * 2
-                    let twinkle = 0.55 + 0.45 * sin(t * 1.1 + phase)
-                    let baseAlpha = 0.22 + CGFloat((index * 13) % 8) * 0.06
-                    let alpha = baseAlpha * CGFloat(twinkle)
-                    context.fill(
-                        Path(ellipseIn: CGRect(x: x, y: y, width: radius, height: radius)),
-                        with: .color(Color.primary.opacity(alpha))
-                    )
-                }
-            }
-        }
-        .allowsHitTesting(false)
     }
 }
 
