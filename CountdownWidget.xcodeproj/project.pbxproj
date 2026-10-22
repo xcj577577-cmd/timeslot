@@ -19,6 +19,8 @@
 		7A011E96D4804C23A9C7B002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A011E96D4804C23A9C7B004 /* PrivacyInfo.xcprivacy */; };
 		C823FE161B4DB818FBEC0389 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E74BDA7D2D588568B61AA8 /* SettingsView.swift */; };
 		F5A304B2B9D6EFD6CE474007 /* PomodoroViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABFFAEED7D000E5FF113EDC0 /* PomodoroViews.swift */; };
+		B7D12F44C9A84E21B3F06E18 /* FocusStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3E1A90B2474D6F91E0C5AA /* FocusStats.swift */; };
+		C1A8E044D2B94F70A6C11B22 /* FocusCharts.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B90C17E6A14C8F9D2E3A01 /* FocusCharts.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +57,8 @@
 		7A011E96D4804C23A9C7B004 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		920131549EA99CC5EE0F0345 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		ABFFAEED7D000E5FF113EDC0 /* PomodoroViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroViews.swift; sourceTree = "<group>"; };
+		8C3E1A90B2474D6F91E0C5AA /* FocusStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusStats.swift; sourceTree = "<group>"; };
+		D4B90C17E6A14C8F9D2E3A01 /* FocusCharts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusCharts.swift; sourceTree = "<group>"; };
 		CD5994A710D6FC32F610D00A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CF5F301D09DE079BBE8FFCEC /* CountdownWidget.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CountdownWidget.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13E74BDA7D2D588568B61AA8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -107,6 +111,8 @@
 				FF9794E3BC5A67F090C95DB6 /* CountdownWidgetApp.swift */,
 				920131549EA99CC5EE0F0345 /* DesignTokens.swift */,
 				7FDCE20B23E6595BBBF07F89 /* Models.swift */,
+				8C3E1A90B2474D6F91E0C5AA /* FocusStats.swift */,
+				D4B90C17E6A14C8F9D2E3A01 /* FocusCharts.swift */,
 				13E74BDA7D2D588568B61AA8 /* SettingsView.swift */,
 				ABFFAEED7D000E5FF113EDC0 /* PomodoroViews.swift */,
 			);
@@ -231,6 +237,8 @@
 				67F742A89F8D90331D195A08 /* CountdownWidgetApp.swift in Sources */,
 				67A083659C27DA91A742FD7A /* DesignTokens.swift in Sources */,
 				4E5785E2DF13F5D7DF44C238 /* Models.swift in Sources */,
+				B7D12F44C9A84E21B3F06E18 /* FocusStats.swift in Sources */,
+				C1A8E044D2B94F70A6C11B22 /* FocusCharts.swift in Sources */,
 				C823FE161B4DB818FBEC0389 /* SettingsView.swift in Sources */,
 				F5A304B2B9D6EFD6CE474007 /* PomodoroViews.swift in Sources */,
 			);
@@ -252,7 +260,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 53;
+			CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = 4FKFDX48HX;
 				GENERATE_INFOPLIST_FILE = NO;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -284,7 +292,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CODE_SIGN_STYLE = Automatic;
-			CURRENT_PROJECT_VERSION = 53;
+			CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = 4FKFDX48HX;
 				GENERATE_INFOPLIST_FILE = NO;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;

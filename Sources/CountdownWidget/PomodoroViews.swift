@@ -51,30 +51,26 @@ private struct StudyShareSheet: View {
 
     private var summary: (tasks: [(String, Double)], hours: [Double], days: [Date: Double], count: Int) {
         let (from, to) = bounds
+        let slices = FocusStats.slices(in: records, from: from, to: to)
         var tasks: [String: Double] = [:]
         var hours = Array(repeating: 0.0, count: 24)
-        var count = 0
         var days: [Date: Double] = [:]
-        for record in records where record.phase == .focus && record.actualDuration > 0 {
-            let wall = record.endedAt.timeIntervalSince(record.startedAt)
-            guard wall > 0 else { continue }
-            var cursor = max(from, record.startedAt)
-            let finish = min(to, record.endedAt)
-            guard cursor < finish else { continue }
-            count += 1
-            let title = record.taskTitle.isEmpty ? "未命名任务" : record.taskTitle
-            while cursor < finish {
-                let hour = beijingCalendar.component(.hour, from: cursor)
-                let boundary = beijingCalendar.dateInterval(of: .hour, for: cursor)!.end
-                let next = min(boundary, finish)
-                let duration = record.actualDuration * next.timeIntervalSince(cursor) / wall
-                tasks[title, default: 0] += duration
-                hours[hour] += duration
-                days[beijingCalendar.startOfDay(for: cursor), default: 0] += duration
-                cursor = next
+        for slice in slices {
+            tasks[slice.taskTitle, default: 0] += slice.duration
+            if slice.hour >= 0 && slice.hour < 24 {
+                hours[slice.hour] += slice.duration
             }
+            days[slice.day, default: 0] += slice.duration
         }
-        return (tasks.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, $0.value) }, hours, days, count)
+        let count = Set(
+            records.filter { FocusStats.isSavedFocus($0) && $0.endedAt > from && $0.startedAt < to }.map(\.id)
+        ).count
+        return (
+            tasks.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, $0.value) },
+            hours,
+            days,
+            count
+        )
     }
 
     var body: some View {
@@ -276,6 +272,10 @@ private struct StudyShareSheet: View {
     }
 }
 
+enum PomodoroOpenRequest: Equatable {
+    case todayInsights
+}
+
 struct PomodoroView: View {
     private enum PresentedSheet: String, Identifiable {
         case tasks
@@ -309,6 +309,7 @@ struct PomodoroView: View {
 
     @ObservedObject var store: CountdownStore
     let onSyncWidget: () -> Void
+    @Binding var openRequest: PomodoroOpenRequest?
     @State private var presentedSheet: PresentedSheet?
     @State private var historyRange: PomodoroHistoryRange
     @State private var customHistoryStart: Date
@@ -321,14 +322,25 @@ struct PomodoroView: View {
     @State private var timerMode: PomodoroTimerMode
     @State private var workspace: Workspace = .focus
     @State private var selectedTrendDate: Date?
-    @State private var showingRecordDetails = false
+    @State private var showingRecordDetails = true
+    @State private var recordsFollowAnalysis = true
+    @State private var analysisDays = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
+    /// 睡眠跨过零点后回到前台时，用它迫使统计页按当前时钟重算。
+    @State private var focusClock = Date.distantPast
 
-    init(store: CountdownStore, onSyncWidget: @escaping () -> Void) {
+    init(
+        store: CountdownStore,
+        onSyncWidget: @escaping () -> Void,
+        openRequest: Binding<PomodoroOpenRequest?>
+    ) {
         self.store = store
         self.onSyncWidget = onSyncWidget
-        _historyRange = State(initialValue: PomodoroHistoryRange(rawValue: countdownDefaults.string(forKey: "pomodoroHistoryRange") ?? "") ?? .all)
+        self._openRequest = openRequest
+        // 统计页默认看今天。不再沿用以前存下来的「按周」，避免和今日统计各算各的。
+        _historyRange = State(initialValue: .today)
         _customHistoryStart = State(
             initialValue: beijingCalendar.date(byAdding: .day, value: -6, to: Date()) ?? Date()
         )
@@ -363,8 +375,11 @@ struct PomodoroView: View {
     private var phaseColor: Color { phaseColor(for: state.phase) }
     private var stopwatchColor: Color { accent }
 
-    // 这些范围都是「天」的粒度，跟着渲染时刻取一次就够，不需要每秒重算。
+    // 这些范围都是「天」的粒度。外层 BeijingDaySchedule 在北京时间零点重绘这一页，不需要每秒重算。
     private var historyBounds: (start: Date, end: Date)? {
+        if recordsFollowAnalysis {
+            return FocusStats.trailingDayWindow(days: analysisDays)
+        }
         guard let bounds = PomodoroHistoryRangePolicy.bounds(
             for: historyRange,
             now: Date(),
@@ -389,54 +404,12 @@ struct PomodoroView: View {
         }
     }
 
-    private struct DayTaskKey: Hashable {
-        let day: Date
-        let taskTitle: String
-    }
-
     private var dailyFocusPoints: [PomodoroDailyFocusPoint] {
-        let calendar = beijingCalendar
-        var totals: [DayTaskKey: TimeInterval] = [:]
-
-        for record in store.pomodoroHistory where record.phase == .focus && record.actualDuration > 0 {
-            let taskTitle = PomodoroTaskPalette.normalized(record.taskTitle)
-            let wallDuration = record.endedAt.timeIntervalSince(record.startedAt)
-
-            if wallDuration <= 0 {
-                let day = calendar.startOfDay(for: record.endedAt)
-                let isInSelectedRange = historyBounds.map {
-                    record.endedAt >= $0.start && record.endedAt < $0.end
-                } ?? true
-                if isInSelectedRange {
-                    totals[DayTaskKey(day: day, taskTitle: taskTitle), default: 0] += record.actualDuration
-                }
-                continue
-            }
-
-            var rangeStart = record.startedAt
-            var rangeEnd = record.endedAt
-            if let bounds = historyBounds {
-                rangeStart = max(rangeStart, bounds.start)
-                rangeEnd = min(rangeEnd, bounds.end)
-            }
-            guard rangeEnd > rangeStart else { continue }
-
-            var cursor = rangeStart
-            while cursor < rangeEnd {
-                let day = calendar.startOfDay(for: cursor)
-                let nextDay = calendar.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(86400)
-                let segmentEnd = min(rangeEnd, nextDay)
-                let segmentRatio = segmentEnd.timeIntervalSince(cursor) / wallDuration
-                totals[DayTaskKey(day: day, taskTitle: taskTitle), default: 0] += record.actualDuration * segmentRatio
-                cursor = segmentEnd
-            }
-        }
-
-        return totals
-            .map { PomodoroDailyFocusPoint(day: $0.key.day, taskTitle: $0.key.taskTitle, duration: $0.value) }
-            .sorted { lhs, rhs in
-                lhs.day == rhs.day ? lhs.taskTitle < rhs.taskTitle : lhs.day < rhs.day
-            }
+        FocusStats.dailyTaskPoints(
+            in: store.pomodoroHistory,
+            from: historyBounds?.start,
+            to: historyBounds?.end
+        )
     }
 
     /// 图例和配色的稳定顺序：按该范围内的专注总时长排，长的在前。
@@ -466,6 +439,18 @@ struct PomodoroView: View {
     }
 
     var body: some View {
+        TimelineView(BeijingDaySchedule()) { context in
+            let _ = FocusStats.displayInstant(scheduleDate: context.date, anchor: focusClock)
+            focusPage
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                focusClock = Date()
+            }
+        }
+    }
+
+    private var focusPage: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -622,8 +607,13 @@ struct PomodoroView: View {
         .onChange(of: historyRange) {
             showingAllHistory = false
             selectedTrendDate = nil
-            countdownDefaults.set(historyRange.rawValue, forKey: "pomodoroHistoryRange")
         }
+        .onChange(of: analysisDays) {
+            guard recordsFollowAnalysis else { return }
+            alignRecordsWithAnalysis()
+        }
+        .onAppear { consumeOpenRequest() }
+        .onChange(of: openRequest) { consumeOpenRequest() }
         .onChange(of: selectedWeekStart) {
             showingAllHistory = false
             selectedTrendDate = nil
@@ -840,12 +830,14 @@ struct PomodoroView: View {
     }
 
     private var todayRecordsSummary: String {
-        let records = store.pomodoroHistory.filter { record in
-            record.status == .stopwatch && beijingCalendar.isDateInToday(record.startedAt)
-        }
-        let total = records.reduce(0.0) { $0 + $1.actualDuration }
-        if records.isEmpty { return "尚无记录" }
-        return "\(records.count) 次 · \(formatHistoryDuration(total))"
+        let bounds = FocusStats.todayBounds()
+        let overlap = FocusStats.stopwatchOverlap(
+            in: store.pomodoroHistory,
+            from: bounds.start,
+            to: bounds.end
+        )
+        if overlap.count == 0 { return "尚无记录" }
+        return "\(overlap.count) 次 · \(formatHistoryDuration(overlap.seconds))"
     }
     /// 正计时模式右侧的信息卡：本次开始时间、今日累计与最近记录。
     /// 实时秒数由 timerCard 的大数字承担，这里只放不重复的静态信息。
@@ -900,9 +892,6 @@ struct PomodoroView: View {
                 }
             }
             .padding(.vertical, Space.m)
-            .overlay {
-                ConfettiEffectView(isActive: state.phase == .focus && state.remaining(at: Date()) <= 0)
-            }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
                 timerMode == .stopwatch
@@ -960,7 +949,7 @@ struct PomodoroView: View {
                         }
                     }
                 } label: {
-                    Label("停止", systemImage: "stop.fill")
+                    Label("结束并记录", systemImage: "stop.fill")
                         .font(AppType.ui(Typo.footnote, .medium))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
@@ -974,7 +963,7 @@ struct PomodoroView: View {
                         ? !state.isStopwatchActive
                         : state.sessionStartedAt == nil
                 )
-                .help("结束当前计时，并把实际用时加入阶段记录")
+                .help("结束当前计时。实际用时满 10 秒才写入学习记录，不足 10 秒不会写入。重置不记录。")
 
                 if timerMode == .countdown {
                     Button {
@@ -982,14 +971,14 @@ struct PomodoroView: View {
                             store.skipPomodoroPhase()
                         }
                     } label: {
-                        Label("跳过", systemImage: "forward.end.fill")
+                        Image(systemName: "forward.end.fill")
                             .font(AppType.ui(Typo.footnote, .medium))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(.primary.opacity(0.72))
+                            .frame(width: 28, height: 28)
+                            .foregroundStyle(.primary.opacity(0.55))
                     }
                     .buttonStyle(TimeSlotPressableStyle())
-                    .inkPill()
+                    .help("跳过当前阶段")
+                    .accessibilityLabel("跳过当前阶段")
                 }
             }
         }
@@ -1027,31 +1016,36 @@ struct PomodoroView: View {
         let shortBreakTotal = records.filter { $0.phase == .shortBreak }.reduce(0.0) { $0 + displayedDuration(for: $1) }
         let longBreakTotal = records.filter { $0.phase == .longBreak }.reduce(0.0) { $0 + displayedDuration(for: $1) }
 
-        return VStack(alignment: .leading, spacing: 28) {
-            // 页头 + 周目标常驻统计页顶部：进度必须可见，不再折叠进原始记录里。
-            VStack(alignment: .leading, spacing: Space.l) {
-                AnalysisWorkspaceHeader()
-                weeklyGoalCard
-            }
-
+        return VStack(alignment: .leading, spacing: 20) {
             FocusAnalysisWorkspace(
                 records: store.pomodoroHistory,
                 tint: accent,
                 taskColor: { store.taskColor(for: $0) },
-                showsHeader: false
+                days: $analysisDays,
+                showsHeader: false,
+                now: beijingCalendar.startOfDay(for: Date())
             )
 
-            DisclosureGroup("原始记录", isExpanded: $showingRecordDetails) {
+            weeklyGoalCard
+
+            DisclosureGroup("学习记录", isExpanded: $showingRecordDetails) {
             HStack {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("历史记录")
+                    Text(recordsFollowAnalysis ? "学习记录 · 与上方统计同一范围" : "学习记录 · 独立范围")
                         .font(AppType.title(15))
                         .tracking(0.2)
-                    Text("按开始日期分组 · 可修正任务与时间")
+                    Text(recordsScopeNote)
                         .font(AppType.ui(Typo.footnote))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.72))
                 }
                 Spacer()
+                if !recordsFollowAnalysis {
+                    Button("改回与统计相同") {
+                        recordsFollowAnalysis = true
+                        alignRecordsWithAnalysis()
+                    }
+                    .buttonStyle(.borderless)
+                }
                 if !records.isEmpty {
                     Button("清空全部", role: .destructive) {
                         showingClearHistoryConfirmation = true
@@ -1434,28 +1428,29 @@ struct PomodoroView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: Space.m) {
-                // 常用范围放分段控件，低频的「今天 / 全部」收进更多菜单，
-                // 让这块决策点保持在 4 个可见选项以内。
                 TimeSlotSegmentedControl(
-                    options: [.week, .last7Days, .thisMonth, .custom].map {
+                    options: [.today, .week, .last7Days, .thisMonth].map {
                         SegmentOption(id: $0.id, title: $0.title, value: $0)
                     },
-                    selection: $historyRange,
+                    selection: Binding(
+                        get: { historyRange },
+                        set: { chooseRecordRange($0) }
+                    ),
                     tint: stopwatchColor
                 )
 
                 Menu {
                     Button {
-                        historyRange = .today
+                        chooseRecordRange(.custom)
                     } label: {
-                        if historyRange == .today {
-                            Label("今天", systemImage: "checkmark")
+                        if historyRange == .custom {
+                            Label("自定义", systemImage: "checkmark")
                         } else {
-                            Text("今天")
+                            Text("自定义")
                         }
                     }
                     Button {
-                        historyRange = .all
+                        chooseRecordRange(.all)
                     } label: {
                         if historyRange == .all {
                             Label("全部", systemImage: "checkmark")
@@ -1477,7 +1472,7 @@ struct PomodoroView: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .inkPill()
-                .help("今天 / 全部记录")
+                .help("自定义 / 全部记录")
                 .accessibilityLabel("更多记录范围")
             }
 
@@ -1498,8 +1493,14 @@ struct PomodoroView: View {
                 }
             } else if historyRange == .custom {
                 HStack(spacing: Space.l) {
-                    DatePicker("开始日期", selection: $customHistoryStart, displayedComponents: [.date])
-                    DatePicker("结束日期", selection: $customHistoryEnd, displayedComponents: [.date])
+                    DatePicker("开始日期", selection: Binding(
+                        get: { customHistoryStart },
+                        set: { customHistoryStart = $0; recordsFollowAnalysis = false }
+                    ), displayedComponents: [.date])
+                    DatePicker("结束日期", selection: Binding(
+                        get: { customHistoryEnd },
+                        set: { customHistoryEnd = $0; recordsFollowAnalysis = false }
+                    ), displayedComponents: [.date])
                 }
                 .font(AppType.ui(Typo.footnote))
             }
@@ -1534,10 +1535,49 @@ struct PomodoroView: View {
     /// 菜单里承载的低频范围：选中时让菜单标题直接显示当前范围，避免“无选中”的疑惑。
     private var menuOnlyRangeTitle: String {
         switch historyRange {
-        case .today: return "今天"
+        case .custom: return "自定义"
         case .all: return "全部"
         default: return "更多"
         }
+    }
+
+    private var recordsScopeNote: String {
+        let range = historyRange.title
+        if recordsFollowAnalysis {
+            return "和上面的统计同一段（\(historyRangeSummary)）。按开始日分组，可修正任务与时间。"
+        }
+        return "当前是\(range)，和上面的统计不是同一段。上方总量不受这里影响。"
+    }
+
+    private func consumeOpenRequest() {
+        guard openRequest == .todayInsights else { return }
+        workspace = .insights
+        analysisDays = 1
+        recordsFollowAnalysis = true
+        showingRecordDetails = true
+        alignRecordsWithAnalysis()
+        openRequest = nil
+    }
+
+    private func chooseRecordRange(_ range: PomodoroHistoryRange) {
+        recordsFollowAnalysis = false
+        historyRange = range
+    }
+
+    private func alignRecordsWithAnalysis() {
+        let calendar = beijingCalendar
+        let today = calendar.startOfDay(for: Date())
+        switch analysisDays {
+        case 1:
+            historyRange = .today
+        case 7:
+            historyRange = .last7Days
+        default:
+            customHistoryStart = calendar.date(byAdding: .day, value: -(analysisDays - 1), to: today) ?? today
+            customHistoryEnd = today
+            historyRange = .custom
+        }
+        showingAllHistory = false
     }
 
     private var historyRangeSummary: String {
@@ -1555,13 +1595,7 @@ struct PomodoroView: View {
         for record: PomodoroSessionRecord,
         within bounds: (start: Date, end: Date)?
     ) -> TimeInterval {
-        guard let bounds else { return record.actualDuration }
-        let overlapStart = max(record.startedAt, bounds.start)
-        let overlapEnd = min(record.endedAt, bounds.end)
-        let overlap = max(0, overlapEnd.timeIntervalSince(overlapStart))
-        let wallDuration = record.endedAt.timeIntervalSince(record.startedAt)
-        guard wallDuration > 0 else { return overlap > 0 ? record.actualDuration : 0 }
-        return record.actualDuration * min(1, overlap / wallDuration)
+        FocusStats.clippedDuration(record, within: bounds)
     }
 
     private var isTimerActive: Bool {
@@ -1906,8 +1940,9 @@ private struct FocusAnalysisWorkspace: View {
     let records: [PomodoroSessionRecord]
     let tint: Color
     let taskColor: (String) -> Color
+    @Binding var days: Int
     var showsHeader: Bool = true
-    @State private var days = 7
+    var now: Date = Date()
     @State private var selectedTask = "全部科目"
     @State private var selectedDate: Date?
 
@@ -1918,29 +1953,10 @@ private struct FocusAnalysisWorkspace: View {
         let seconds: Double
     }
 
-    // 按北京时间的小时边界切分，并按实际时长比例分配跨日记录。
     private func slices(from start: Date, to end: Date) -> [Slice] {
-        let calendar = beijingCalendar
-        var result: [Slice] = []
-        for record in records where record.phase == .focus && record.actualDuration > 0 {
-            let wall = record.endedAt.timeIntervalSince(record.startedAt)
-            let task = PomodoroTaskPalette.normalized(record.taskTitle)
-            guard wall > 0 else {
-                if record.endedAt >= start && record.endedAt < end {
-                    result.append(Slice(day: calendar.startOfDay(for: record.endedAt), hour: calendar.component(.hour, from: record.endedAt), task: task, seconds: record.actualDuration))
-                }
-                continue
-            }
-            var cursor = max(start, record.startedAt)
-            let stop = min(end, record.endedAt)
-            while cursor < stop {
-                let boundary = calendar.dateInterval(of: .hour, for: cursor)?.end ?? cursor.addingTimeInterval(3600)
-                let next = min(stop, boundary)
-                result.append(Slice(day: calendar.startOfDay(for: cursor), hour: calendar.component(.hour, from: cursor), task: task, seconds: record.actualDuration * next.timeIntervalSince(cursor) / wall))
-                cursor = next
-            }
+        FocusStats.slices(in: records, from: start, to: end).map {
+            Slice(day: $0.day, hour: $0.hour, task: $0.taskTitle, seconds: $0.duration)
         }
-        return result
     }
 
     private func duration(_ seconds: Double) -> String {
@@ -1950,8 +1966,9 @@ private struct FocusAnalysisWorkspace: View {
 
     var body: some View {
         let calendar = beijingCalendar
-        let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date()))!
-        let start = calendar.date(byAdding: .day, value: -days, to: end)!
+        let window = FocusStats.trailingDayWindow(days: days, containing: now)
+        let end = window.end
+        let start = window.start
         let previousStart = calendar.date(byAdding: .day, value: -days, to: start)!
         let all = slices(from: previousStart, to: end)
         let current = all.filter { $0.day >= start }
@@ -1961,13 +1978,12 @@ private struct FocusAnalysisWorkspace: View {
         let dates = (0..<days).map { calendar.date(byAdding: .day, value: $0, to: start)! }
         let tasks = Dictionary(grouping: current, by: \.task).mapValues { $0.reduce(0) { $0 + $1.seconds } }
         let order = tasks.keys.sorted { tasks[$0, default: 0] > tasks[$1, default: 0] }
-        let filtered = current.filter { selectedTask == "全部科目" || $0.task == selectedTask }
-        let chartDays = Dictionary(grouping: filtered, by: \.day).mapValues { $0.reduce(0) { $0 + $1.seconds } }
-        let hourly = Dictionary(grouping: filtered, by: \.hour).mapValues { $0.reduce(0) { $0 + $1.seconds } }
-        let average = filtered.reduce(0) { $0 + $1.seconds } / Double(days)
-        let points = current.map { PomodoroDailyFocusPoint(day: $0.day, taskTitle: $0.task, duration: $0.seconds) }
+        let average = current
+            .filter { selectedTask == "全部科目" || $0.task == selectedTask }
+            .reduce(0) { $0 + $1.seconds } / Double(max(days, 1))
+        let points = FocusStats.dailyTaskPoints(in: records, from: start, to: end)
 
-        return VStack(alignment: .leading, spacing: 28) {
+        return VStack(alignment: .leading, spacing: 16) {
             if showsHeader {
                 HStack(alignment: .top) {
                     AnalysisWorkspaceHeader()
@@ -1986,102 +2002,170 @@ private struct FocusAnalysisWorkspace: View {
                     analysisTaskPicker(order: order)
                 }
             }
-            Text("周期影响全部分析；科目筛选仅影响趋势与时段图。")
-                .font(AppType.caption()).foregroundStyle(.secondary)
+            Text("总量和科目分配包含全部科目。科目筛选只改变趋势图和时段图。")
+                .font(AppType.caption())
+                .foregroundStyle(Color.primary.opacity(0.72))
 
+            let sessionCount = records.filter {
+                FocusStats.isSavedFocus($0) && $0.endedAt > start && $0.startedAt < end
+            }.count
             HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("近 \(days) 天 · 已记录投入").font(AppType.caption()).foregroundStyle(.secondary)
+                    Text(days == 1 ? "今天 · 已记录投入" : "近 \(days) 天 · 已记录投入")
+                        .font(AppType.caption()).foregroundStyle(Color.primary.opacity(0.72))
                     Text(duration(total)).font(AppType.ui(32, .semibold)).monospacedDigit().minimumScaleFactor(0.7).lineLimit(1)
-                    Text(previous > 0 ? "较前 \(days) 天 \(total >= previous ? "+" : "")\(Int(((total / previous - 1) * 100).rounded()))%" : "上一周期暂无记录")
-                        .font(AppType.caption()).foregroundStyle(.secondary)
+                    Text(FocusStats.periodComparisonCaption(days: days, previousSeconds: previous))
+                        .font(AppType.caption())
+                        .foregroundStyle(Color.primary.opacity(0.72))
+                        .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                metric("日均投入", duration(total / Double(days)), "含零投入日期")
-                metric("学习天数", "\(daily.count) / \(days)", "今天尚未结束")
+                if days == 1 {
+                    metric("记录次数", "\(sessionCount)", "已保存的专注")
+                    metric("科目", order.isEmpty ? "0" : "\(order.count)", order.first.map { "最多是 \($0)" } ?? "今天还没有记录")
+                } else {
+                    metric("日均投入", duration(total / Double(days)), "含零投入日期")
+                    metric("学习天数", "\(daily.count) / \(days)", "今天尚未结束")
+                }
             }
             .padding(.vertical, 8)
 
-            Divider()
-            HStack {
-                Text("投入趋势").font(AppType.title(Typo.headline))
-                Spacer()
-                Text(selectedTask).font(AppType.caption()).foregroundStyle(.secondary)
-            }
-            Chart {
-                ForEach(dates, id: \.self) { day in
-                    BarMark(x: .value("日期", day, unit: .day), y: .value("小时", chartDays[day, default: 0] / 3600), width: .ratio(0.65))
-                        .foregroundStyle(selectedTask == "全部科目" ? tint : taskColor(selectedTask))
-                        .cornerRadius(3)
-                        .accessibilityLabel("\(beijingDateString(day, dateStyle: .abbreviated, timeStyle: .omitted))，\(duration(chartDays[day, default: 0]))")
+            if days > 1 {
+                Divider()
+                HStack {
+                    Text("投入趋势").font(AppType.title(Typo.headline))
+                    Spacer()
+                    Text(selectedTask).font(AppType.caption()).foregroundStyle(.secondary)
                 }
-                RuleMark(y: .value("日均", average / 3600))
-                    .foregroundStyle(Color.secondary).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .annotation(position: .top, alignment: .trailing) { Text("日均 \(duration(average))").font(AppType.caption(11)).foregroundStyle(.secondary) }
-            }
-            .chartYAxisLabel("小时")
-            .chartXAxis { AxisMarks(values: .automatic(desiredCount: 7)) { AxisValueLabel(format: .dateTime.month(.defaultDigits).day()) } }
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    Rectangle().fill(.clear).contentShape(Rectangle()).onTapGesture { location in
-                        if let plot = proxy.plotFrame, geometry[plot].contains(location) {
-                            selectedDate = proxy.value(atX: location.x - geometry[plot].minX)
+                let chartPoints = selectedTask == "全部科目"
+                    ? points
+                    : points.filter { $0.taskTitle == selectedTask }
+                StackedFocusChart(
+                    points: chartPoints,
+                    days: dates,
+                    taskColor: taskColor,
+                    height: 220,
+                    averageHours: average / 3600,
+                    selectedDate: selectedDate,
+                    onSelectDate: { selectedDate = $0 }
+                )
+                if let selectedDate {
+                    let day = calendar.startOfDay(for: selectedDate)
+                    let detail = Dictionary(grouping: current.filter { $0.day == day }, by: \.task).mapValues { $0.reduce(0) { $0 + $1.seconds } }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(beijingDateString(day, dateStyle: .abbreviated, timeStyle: .omitted)) · \(duration(daily[day, default: 0]))").font(AppType.ui(Typo.footnote, .semibold))
+                        ForEach(detail.keys.sorted(), id: \.self) { task in
+                            HStack { Text(task).foregroundStyle(taskColor(task)); Spacer(); Text(duration(detail[task, default: 0])) }.font(AppType.caption())
                         }
-                    }
+                    }.padding(12).nestedSurface()
+                } else {
+                    Text("点击柱形查看当天科目明细 · 虚线为所选科目的日均投入")
+                        .font(AppType.caption()).foregroundStyle(.secondary)
                 }
-            }
-            .frame(height: 260)
-            if let selectedDate {
-                let day = calendar.startOfDay(for: selectedDate)
-                let detail = Dictionary(grouping: current.filter { $0.day == day }, by: \.task).mapValues { $0.reduce(0) { $0 + $1.seconds } }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("\(beijingDateString(day, dateStyle: .abbreviated, timeStyle: .omitted)) · \(duration(daily[day, default: 0]))").font(AppType.ui(Typo.footnote, .semibold))
-                    ForEach(detail.keys.sorted(), id: \.self) { task in
-                        HStack { Text(task).foregroundStyle(taskColor(task)); Spacer(); Text(duration(detail[task, default: 0])) }.font(AppType.caption())
-                    }
-                }.padding(12).nestedSurface()
-            } else {
-                Text("点击柱形查看当天科目明细 · 虚线为所选科目的日均投入")
-                    .font(AppType.caption()).foregroundStyle(.secondary)
             }
 
             Divider()
-            Text("科目分配").font(AppType.title(Typo.headline))
-            if order.isEmpty { Text("完成并保存一次学习后，这里会显示科目分配。").foregroundStyle(.secondary) }
+            Text(days == 1 ? "今天的科目" : "科目分配").font(AppType.title(Typo.headline))
+            if order.isEmpty { Text(days == 1 ? "今天还没有已保存的学习记录。" : "完成并保存一次学习后，这里会显示科目分配。").foregroundStyle(.secondary) }
             ForEach(order, id: \.self) { task in
                 let taskDays = Dictionary(grouping: current.filter { $0.task == task }, by: \.day).mapValues { $0.reduce(0) { $0 + $1.seconds } }
+                let share = tasks[task, default: 0] / max(1, total)
                 HStack(spacing: 16) {
                     Circle().fill(taskColor(task)).frame(width: 8, height: 8)
                     Text(task).font(AppType.ui(Typo.footnote, .medium)).frame(width: 72, alignment: .leading).lineLimit(1)
-                    Chart(dates, id: \.self) { date in
-                        BarMark(x: .value("日期", date, unit: .day), y: .value("小时", taskDays[date, default: 0] / 3600)).foregroundStyle(taskColor(task))
-                    }.chartXAxis(.hidden).chartYAxis(.hidden).frame(height: 34)
+                    if days == 1 {
+                        GeometryReader { proxy in
+                            Capsule()
+                                .fill(taskColor(task).opacity(0.16))
+                                .overlay(alignment: .leading) {
+                                    Capsule()
+                                        .fill(taskColor(task))
+                                        .frame(width: max(4, proxy.size.width * share))
+                                }
+                        }
+                        .frame(height: 8)
+                        .accessibilityLabel("\(task)占今天 \(Int((share * 100).rounded()))%")
+                    } else {
+                        Chart(dates, id: \.self) { date in
+                            BarMark(x: .value("日期", date, unit: .day), y: .value("小时", taskDays[date, default: 0] / 3600)).foregroundStyle(taskColor(task))
+                        }
+                        .chartXAxis(.hidden)
+                        .chartYAxis(.hidden)
+                        .chartYScale(domain: 0...max(0.25, (daily.values.max() ?? 0) / 3600))
+                        .frame(height: 34)
                         .accessibilityLabel("\(task)近\(days)天的每日投入")
+                    }
                     VStack(alignment: .trailing, spacing: 3) {
                         Text(duration(tasks[task, default: 0])).font(AppType.ui(Typo.footnote, .semibold))
-                        Text(String(format: "%.1f%%", tasks[task, default: 0] / max(1, total) * 100)).font(AppType.caption()).foregroundStyle(.secondary)
+                        Text(String(format: "%.0f%%", share * 100)).font(AppType.caption()).foregroundStyle(.secondary)
                     }.frame(width: 105, alignment: .trailing).monospacedDigit()
                 }
             }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Text("学习时段").font(AppType.title(Typo.headline))
-                Text("\(selectedTask) · 各时段累计投入，跨时段记录按实际时长比例分配")
-                    .font(AppType.caption()).foregroundStyle(.secondary)
+                Text(hourChartTitle).font(AppType.title(Typo.headline))
+                Text(hourChartNote)
+                    .font(AppType.caption()).foregroundStyle(Color.primary.opacity(0.72))
             }
-            Chart(0..<24, id: \.self) { hour in
-                BarMark(x: .value("时刻", hour), y: .value("累计小时", hourly[hour, default: 0] / 3600))
-                    .foregroundStyle(tint.opacity(0.75)).cornerRadius(2)
-                    .accessibilityLabel("\(hour)点，\(duration(hourly[hour, default: 0]))")
-            }
-            .chartXAxis { AxisMarks(values: [0, 6, 12, 18, 23]) { value in AxisValueLabel { if let hour = value.as(Int.self) { Text("\(hour)时") } } } }
-            .chartYAxisLabel("小时").frame(height: 130)
+            let hourWindow = hourChartWindow(calendar: calendar, periodStart: start, periodEnd: end)
+                let dayHourly = FocusStats.hourlySeconds(
+                    in: records,
+                    from: hourWindow.start,
+                    to: hourWindow.end,
+                    selectedTask: selectedTask
+                )
+                Text(selectedTask == "全部科目" ? "时段图包含全部科目。" : "时段图只含「\(selectedTask)」，上面的总量仍是全部科目。")
+                    .font(AppType.caption())
+                    .foregroundStyle(Color.primary.opacity(0.72))
+                Chart(0..<24, id: \.self) { hour in
+                    BarMark(x: .value("时刻", hour), y: .value("累计小时", dayHourly[hour, default: 0] / 3600))
+                        .foregroundStyle(tint.opacity(0.75)).cornerRadius(2)
+                        .accessibilityLabel("\(hour)点，\(duration(dayHourly[hour, default: 0]))")
+                }
+                .chartXAxis { AxisMarks(values: [0, 6, 12, 18, 23]) { value in AxisValueLabel { if let hour = value.as(Int.self) { Text("\(hour)时") } } } }
+                .chartYAxisLabel("小时").frame(height: 110)
 
-            PomodoroActivityCalendar(points: points.sorted { $0.day < $1.day }, rangeStart: start, rangeEnd: end, tint: tint, formatHistoryDuration: duration)
+            if days > 7 {
+                PomodoroActivityCalendar(points: points.sorted { $0.day < $1.day }, rangeStart: start, rangeEnd: end, tint: tint, formatHistoryDuration: duration)
+            }
             Text("仅统计已保存的专注与正计时记录；进行中的计时将在停止并记录后计入。日期按北京时间划分，周期含今天。")
                 .font(AppType.caption()).foregroundStyle(.secondary)
         }
         .onChange(of: days) { selectedDate = nil; selectedTask = "全部科目" }
+        .onChange(of: order.joined(separator: "\u{1f}")) { _, names in
+            let titles = names.split(separator: "\u{1f}").map(String.init)
+            if selectedTask != "全部科目", !titles.contains(selectedTask) {
+                selectedTask = "全部科目"
+            }
+            if let selectedDate, days > 1, !dates.contains(where: { calendar.isDate($0, inSameDayAs: selectedDate) }) {
+                self.selectedDate = nil
+            }
+        }
         .environment(\.timeZone, TimeZone(identifier: "Asia/Shanghai")!)
+    }
+
+    private var hourChartTitle: String {
+        if days <= 1 { return "今天的时段" }
+        if selectedDate != nil { return "当天时段" }
+        return "本周期的时段"
+    }
+
+    private var hourChartNote: String {
+        if days > 1, selectedDate == nil {
+            return "未点选日期时，按整个周期的小时累计。点选某一天后只看当天。"
+        }
+        if days <= 1 {
+            return "按北京时间的小时累计。"
+        }
+        return "按所选日期的小时累计。"
+    }
+
+    private func hourChartWindow(calendar: Calendar, periodStart: Date, periodEnd: Date) -> (start: Date, end: Date) {
+        if days > 1, let selectedDate {
+            let day = calendar.startOfDay(for: selectedDate)
+            let end = calendar.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(86_400)
+            return (day, end)
+        }
+        return (periodStart, periodEnd)
     }
 
     private var analysisPeriodPicker: some View {
@@ -2089,13 +2173,13 @@ private struct FocusAnalysisWorkspace: View {
             Text("分析周期").font(AppType.ui(Typo.footnote, .medium))
             // 用应用自己的分段控件，选中态是墨色纸面，不引入系统蓝。
             TimeSlotSegmentedControl(
-                options: [7, 30, 90].map {
-                    SegmentOption(id: "analysis.\($0)", title: "\($0) 天", value: $0)
+                options: [(1, "今天"), (7, "7 天"), (30, "30 天"), (90, "90 天")].map {
+                    SegmentOption(id: "analysis.\($0.0)", title: $0.1, value: $0.0)
                 },
                 selection: $days,
                 tint: tint
             )
-            .frame(width: 190)
+            .frame(width: 280)
         }
     }
 
@@ -2601,20 +2685,24 @@ struct PomodoroHistoryEditSheet: View {
         _taskTitle = State(initialValue: PomodoroTaskPalette.normalized(record.taskTitle))
     }
 
-    private var durationText: String {
-        let wall = max(0, endedAt.timeIntervalSince(startedAt))
-        let total = Int(wall.rounded())
+    private var edited: PomodoroHistoryEditMath.Preview? {
+        PomodoroHistoryEditMath.preview(previous: record, startedAt: startedAt, endedAt: endedAt)
+    }
+
+    private func clockText(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
         if total < 60 { return "\(total) 秒" }
         let minutes = total / 60
         let hours = minutes / 60
         if hours > 0 {
             return minutes % 60 == 0 ? "\(hours) 小时" : "\(hours) 小时 \(minutes % 60) 分"
         }
-        return "\(minutes) 分钟"
+        let remain = total % 60
+        return remain == 0 ? "\(minutes) 分钟" : "\(minutes) 分 \(remain) 秒"
     }
 
     private var canSave: Bool {
-        endedAt.timeIntervalSince(startedAt) > 0
+        edited != nil
     }
 
     var body: some View {
@@ -2688,14 +2776,29 @@ struct PomodoroHistoryEditSheet: View {
                 Divider()
 
                 HStack {
-                    Text("修正后时长")
+                    Text("起止跨度")
                         .font(AppType.ui(Typo.footnote, .medium))
                     Spacer()
-                    Text(durationText)
+                    Text(edited.map { clockText($0.wall) } ?? "—")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.primary.opacity(0.72))
+                }
+                HStack {
+                    Text("计入时长")
+                        .font(AppType.ui(Typo.footnote, .medium))
+                    Spacer()
+                    Text(edited.map { clockText($0.actual) } ?? "—")
                         .font(AppType.ui(Typo.body, .semibold))
                         .monospacedDigit()
                         .foregroundStyle(canSave ? Color.primary : Color.orange)
                 }
+                Text(edited?.timesUnchanged == true
+                     ? "只改科目不会改变计入时长。起止跨度是墙上的时间，计入时长才是会保存的实际用时。"
+                     : "已改起止时间。含暂停的记录按原来的实际用时比例折算，预览和保存用同一结果。")
+                    .font(AppType.caption())
+                    .foregroundStyle(Color.primary.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if !canSave {
                     Label("结束时间需要晚于开始时间", systemImage: "exclamationmark.triangle.fill")

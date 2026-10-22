@@ -93,6 +93,7 @@ extension Notification.Name {
     static let switchToCountdownRequested = Notification.Name("switchToCountdownRequested")
     static let switchToPomodoroRequested = Notification.Name("switchToPomodoroRequested")
     static let openPomodoroSettingsRequested = Notification.Name("openPomodoroSettingsRequested")
+    static let openTodayInsightsRequested = Notification.Name("openTodayInsightsRequested")
     static let showWidgetHelpRequested = Notification.Name("showWidgetHelpRequested")
     static let focusCountdownSearchRequested = Notification.Name("focusCountdownSearchRequested")
     static let showKeyboardShortcutsRequested = Notification.Name("showKeyboardShortcutsRequested")

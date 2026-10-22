@@ -954,16 +954,18 @@ struct TimeSlotGlowMeter: View {
                     .fill(color.opacity(0.10))
                     .frame(height: 10)
 
-                // 25% 间隔的仪器刻度点
-                HStack {
-                    ForEach(0..<5) { index in
+                let tip = glowBarWidth * clamped
+                let wedgeWidth: CGFloat = 8
+                let wedgeX = min(max(tip - wedgeWidth * 0.72, 0), max(0, glowBarWidth - wedgeWidth))
+                ForEach([0.25, 0.5, 0.75, 1.0], id: \.self) { mark in
+                    let x = glowBarWidth * mark
+                    if x < wedgeX - 4 || x > wedgeX + wedgeWidth + 4 {
                         Circle()
-                            .fill(Color.primary.opacity(index == 0 ? 0 : 0.22))
+                            .fill(Color.primary.opacity(0.22))
                             .frame(width: 3, height: 3)
-                        if index < 4 { Spacer(minLength: 0) }
+                            .offset(x: x - 1.5)
                     }
                 }
-                .padding(.horizontal, 2)
                 .allowsHitTesting(false)
 
                 Capsule()
@@ -978,12 +980,6 @@ struct TimeSlotGlowMeter: View {
                     .shadow(color: color.opacity(0.36), radius: 5)
 
                 if clamped > 0.02 {
-                    Circle()
-                        .fill(Color.white.opacity(0.95))
-                        .frame(width: 13, height: 13)
-                        .offset(x: max(0, glowBarWidth * clamped) - 6.5)
-                        .shadow(color: Color.white.opacity(0.7), radius: 5)
-
                     TimeSlotWedge()
                         .fill(
                             LinearGradient(
@@ -992,9 +988,9 @@ struct TimeSlotGlowMeter: View {
                                 endPoint: .bottom
                             )
                         )
-                        .frame(width: 8, height: 16)
-                        .offset(x: max(0, glowBarWidth * clamped) - 2)
-                        .shadow(color: BrandPalette.gold.opacity(0.6), radius: 4)
+                        .frame(width: wedgeWidth, height: 14)
+                        .offset(x: wedgeX)
+                        .shadow(color: BrandPalette.gold.opacity(0.28), radius: 1.5, y: 0)
                 }
             }
             .frame(width: glowBarWidth, height: 18)
@@ -1006,7 +1002,7 @@ struct TimeSlotGlowMeter: View {
                     .fill(isRunning ? color : Color.secondary.opacity(0.4))
                     .frame(width: 7, height: 7)
                     .shadow(color: isRunning ? color.opacity(0.6) : .clear, radius: 4)
-                Text(isRunning ? "RUNNING" : "STANDBY")
+                Text(isRunning ? "计时中" : "待机")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .tracking(1.6)
                     .foregroundStyle(.secondary)

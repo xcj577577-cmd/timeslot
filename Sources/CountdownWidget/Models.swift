@@ -441,6 +441,76 @@ enum PomodoroTaskPalette {
     }
 }
 
+/// 修正记录时，弹窗预览和保存必须共用这一规则。
+/// 可见的分钟没变时，保留原来的起止和实际时长（只改科目不会改时长）。
+/// 分钟变了之后，含暂停的记录仍按「原实际时长 / 原墙钟」缩放，不含暂停的记录等于新墙钟。
+enum PomodoroHistoryEditMath {
+    struct Preview: Equatable {
+        var startedAt: Date
+        var endedAt: Date
+        var wall: TimeInterval
+        var actual: TimeInterval
+        var timesUnchanged: Bool
+    }
+
+    static func sameVisibleMinute(
+        _ lhs: Date,
+        _ rhs: Date,
+        calendar: Calendar = beijingCalendar
+    ) -> Bool {
+        let fields: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute]
+        return calendar.dateComponents(fields, from: lhs) == calendar.dateComponents(fields, from: rhs)
+    }
+
+    static func preview(
+        previous: PomodoroSessionRecord,
+        startedAt: Date,
+        endedAt: Date,
+        calendar: Calendar = beijingCalendar
+    ) -> Preview? {
+        guard endedAt.timeIntervalSince(startedAt) > 0 else { return nil }
+        let timesUnchanged = sameVisibleMinute(previous.startedAt, startedAt, calendar: calendar)
+            && sameVisibleMinute(previous.endedAt, endedAt, calendar: calendar)
+        if timesUnchanged {
+            let wall = previous.endedAt.timeIntervalSince(previous.startedAt)
+            return Preview(
+                startedAt: previous.startedAt,
+                endedAt: previous.endedAt,
+                wall: max(0, wall),
+                actual: max(0, previous.actualDuration),
+                timesUnchanged: true
+            )
+        }
+        let wall = endedAt.timeIntervalSince(startedAt)
+        let previousWall = previous.endedAt.timeIntervalSince(previous.startedAt)
+        let actual: TimeInterval
+        if previousWall > 0, previous.actualDuration <= previousWall {
+            actual = previous.actualDuration * (wall / previousWall)
+        } else {
+            actual = wall
+        }
+        return Preview(
+            startedAt: startedAt,
+            endedAt: endedAt,
+            wall: wall,
+            actual: max(0, actual),
+            timesUnchanged: false
+        )
+    }
+}
+
+enum TimelineBlockIdentity {
+    static func make(recordIDs: [UUID], day: Date, startHour: Double, live: Bool) -> String {
+        let who: String
+        if recordIDs.isEmpty {
+            who = live ? "live" : "none"
+        } else {
+            who = recordIDs.map(\.uuidString).sorted().joined(separator: ",")
+        }
+        return "\(who)|\(day.timeIntervalSinceReferenceDate)|\(startHour)"
+    }
+}
+
 struct PomodoroDailyFocusPoint: Identifiable {
     let day: Date
     let taskTitle: String

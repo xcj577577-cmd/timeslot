@@ -1232,7 +1232,7 @@ struct CountdownDesktopWidgetView: View {
             }
 
             if family != .systemSmall {
-                Text("专注阶段与正计时都会计入本周累计")
+                Text("含进行中 · 番茄钟与正计时")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

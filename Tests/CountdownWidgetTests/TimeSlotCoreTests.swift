@@ -547,3 +547,341 @@ extension TimeSlotCoreTests {
         }
     }
 }
+
+
+// MARK: - 专注统计口径（只读，合成记录，不读 App Group）
+
+extension TimeSlotCoreTests {
+    private func beijingDate(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int = 0,
+        minute: Int = 0
+    ) throws -> Date {
+        try XCTUnwrap(beijingCalendar.date(from: DateComponents(
+            year: year, month: month, day: day, hour: hour, minute: minute
+        )))
+    }
+
+    private func focusRecord(
+        title: String,
+        start: Date,
+        end: Date,
+        actual: TimeInterval? = nil,
+        phase: PomodoroPhase = .focus
+    ) -> PomodoroSessionRecord {
+        let wall = end.timeIntervalSince(start)
+        return PomodoroSessionRecord(
+            phase: phase,
+            taskTitle: title,
+            plannedDuration: wall,
+            actualDuration: actual ?? wall,
+            startedAt: start,
+            endedAt: end,
+            status: .completed
+        )
+    }
+
+    func testFocusStatsSplitsOvernightRecordAcrossBeijingDays() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 21, hour: 23)
+        let end = try beijingDate(year: 2026, month: 9, day: 22, hour: 1)
+        let record = focusRecord(title: "数学", start: start, end: end)
+        let slices = FocusStats.slices(record)
+        let monday = beijingCalendar.startOfDay(for: start)
+        let tuesday = beijingCalendar.startOfDay(for: end)
+        let mondaySeconds = slices.filter { $0.day == monday }.reduce(0) { $0 + $1.duration }
+        let tuesdaySeconds = slices.filter { $0.day == tuesday }.reduce(0) { $0 + $1.duration }
+        XCTAssertEqual(mondaySeconds, 3600, accuracy: 0.01)
+        XCTAssertEqual(tuesdaySeconds, 3600, accuracy: 0.01)
+        XCTAssertEqual(FocusStats.totalSeconds(in: [record]), 7200, accuracy: 0.01)
+    }
+
+    func testFocusStatsSplitsAcrossMondayWeekBoundary() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 20, hour: 23)
+        let end = try beijingDate(year: 2026, month: 9, day: 21, hour: 1)
+        let record = focusRecord(title: "英语", start: start, end: end)
+        let sundayWeek = FocusStats.weekBounds(containing: start)
+        let mondayWeek = FocusStats.weekBounds(containing: end)
+        XCTAssertEqual(sundayWeek.end, mondayWeek.start)
+        XCTAssertEqual(
+            FocusStats.totalSeconds(in: [record], from: sundayWeek.start, to: sundayWeek.end),
+            3600,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            FocusStats.totalSeconds(in: [record], from: mondayWeek.start, to: mondayWeek.end),
+            3600,
+            accuracy: 0.01
+        )
+    }
+
+    func testFocusStatsPausedSessionUsesActualOverWallRatio() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 21, hour: 22)
+        let end = try beijingDate(year: 2026, month: 9, day: 22, hour: 1)
+        let record = focusRecord(title: "431", start: start, end: end, actual: 3600)
+        let monday = beijingCalendar.startOfDay(for: start)
+        let tuesday = beijingCalendar.startOfDay(for: end)
+        let points = FocusStats.dailyTaskPoints(in: [record])
+        let mondayDuration = points.first { $0.day == monday }?.duration ?? 0
+        let tuesdayDuration = points.first { $0.day == tuesday }?.duration ?? 0
+        XCTAssertEqual(mondayDuration, 2400, accuracy: 0.01)
+        XCTAssertEqual(tuesdayDuration, 1200, accuracy: 0.01)
+        XCTAssertEqual(mondayDuration + tuesdayDuration, 3600, accuracy: 0.01)
+    }
+
+    func testFocusStatsIgnoresBreaksAndDoesNotCountLiveSessions() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 21, hour: 10)
+        let end = start.addingTimeInterval(1800)
+        let focus = focusRecord(title: "数学", start: start, end: end)
+        let rest = focusRecord(
+            title: "数学",
+            start: end,
+            end: end.addingTimeInterval(300),
+            phase: .shortBreak
+        )
+        XCTAssertEqual(FocusStats.totalSeconds(in: [focus, rest]), 1800, accuracy: 0.01)
+        XCTAssertTrue(FocusStats.slices(rest).isEmpty)
+    }
+
+    func testFocusStatsClippedDurationMatchesHistoryCardOverlap() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 21, hour: 23, minute: 30)
+        let end = try beijingDate(year: 2026, month: 9, day: 22, hour: 0, minute: 30)
+        let record = focusRecord(title: "线代", start: start, end: end)
+        let day = beijingCalendar.startOfDay(for: end)
+        let next = try beijingDate(year: 2026, month: 9, day: 23)
+        XCTAssertEqual(
+            FocusStats.clippedDuration(record, within: (day, next)),
+            1800,
+            accuracy: 0.01
+        )
+    }
+
+    func testFocusStatsWeekPaceHeadlineWhenBehindTarget() throws {
+        let monday = try beijingDate(year: 2026, month: 9, day: 21, hour: 9)
+        let record = focusRecord(
+            title: "数学",
+            start: monday,
+            end: monday.addingTimeInterval(2 * 3600)
+        )
+        let pace = FocusStats.weekPace(
+            in: [record],
+            goalMinutes: 56 * 60,
+            at: monday
+        )
+        XCTAssertEqual(pace.savedSeconds, 7200, accuracy: 0.01)
+        XCTAssertEqual(pace.daysLeftIncludingToday, 7)
+        XCTAssertTrue(pace.headline.contains("每天"))
+        XCTAssertFalse(pace.headline.contains("已达成"))
+    }
+
+    func testHourlyTotalsRespectSubjectFilter() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 23, hour: 9)
+        let math = focusRecord(title: "数学", start: start, end: start.addingTimeInterval(3600))
+        let english = focusRecord(
+            title: "英语",
+            start: start.addingTimeInterval(3600),
+            end: start.addingTimeInterval(7200)
+        )
+        let day = beijingCalendar.startOfDay(for: start)
+        let next = try beijingDate(year: 2026, month: 9, day: 24)
+        let mathHours = FocusStats.hourlySeconds(
+            in: [math, english], from: day, to: next, selectedTask: "数学"
+        )
+        let allHours = FocusStats.hourlySeconds(
+            in: [math, english], from: day, to: next, selectedTask: "全部科目"
+        )
+        XCTAssertEqual(mathHours.values.reduce(0, +), 3600, accuracy: 0.01)
+        XCTAssertEqual(allHours.values.reduce(0, +), 7200, accuracy: 0.01)
+    }
+
+    func testDailyPointsAggregateHoursAndKeepUniqueIDs() throws {
+        let morning = try beijingDate(year: 2026, month: 9, day: 23, hour: 9)
+        let first = focusRecord(title: "数学", start: morning, end: morning.addingTimeInterval(3600))
+        let second = focusRecord(
+            title: "数学",
+            start: morning.addingTimeInterval(2 * 3600),
+            end: morning.addingTimeInterval(3 * 3600)
+        )
+        let english = focusRecord(
+            title: "英语",
+            start: morning.addingTimeInterval(4 * 3600),
+            end: morning.addingTimeInterval(5 * 3600)
+        )
+        let day = beijingCalendar.startOfDay(for: morning)
+        let next = try beijingDate(year: 2026, month: 9, day: 24)
+        let points = FocusStats.dailyTaskPoints(in: [first, second, english], from: day, to: next)
+        XCTAssertEqual(Set(points.map(\.id)).count, points.count)
+        let math = try XCTUnwrap(points.first { $0.taskTitle == "数学" })
+        XCTAssertEqual(math.duration, 7200, accuracy: 0.01)
+        XCTAssertEqual(points.reduce(0) { $0 + $1.duration }, 3 * 3600, accuracy: 0.01)
+        let onlyMath = points.filter { $0.taskTitle == "数学" }
+        XCTAssertEqual(onlyMath.reduce(0) { $0 + $1.duration }, 7200, accuracy: 0.01)
+    }
+
+    func testDailyPointsKeepOvernightAndPausedDurations() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 23, hour: 23)
+        let end = try beijingDate(year: 2026, month: 9, day: 24, hour: 1)
+        let paused = focusRecord(title: "数学", start: start, end: end, actual: 3600)
+        let points = FocusStats.dailyTaskPoints(in: [paused])
+        XCTAssertEqual(Set(points.map(\.id)).count, points.count)
+        XCTAssertEqual(points.reduce(0) { $0 + $1.duration }, 3600, accuracy: 0.01)
+        XCTAssertEqual(points.count, 2)
+    }
+
+    func testHistoryEditPreviewMatchesSavedActualAndKeepsTaskOnlyEdits() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 23, hour: 10)
+        let end = start.addingTimeInterval(59 * 60)
+        let paused = focusRecord(title: "数学", start: start, end: end, actual: 27 * 60 + 18)
+        let unchanged = try XCTUnwrap(PomodoroHistoryEditMath.preview(
+            previous: paused, startedAt: start, endedAt: end
+        ))
+        XCTAssertEqual(unchanged.actual, 27 * 60 + 18, accuracy: 0.01)
+        XCTAssertTrue(unchanged.timesUnchanged)
+        XCTAssertEqual(unchanged.startedAt, start)
+        XCTAssertEqual(unchanged.endedAt, end)
+
+        let driftedEnd = end.addingTimeInterval(20)
+        let secondsOnly = try XCTUnwrap(PomodoroHistoryEditMath.preview(
+            previous: paused, startedAt: start, endedAt: driftedEnd
+        ))
+        XCTAssertEqual(secondsOnly.actual, paused.actualDuration, accuracy: 0.01)
+
+        let longerEnd = end.addingTimeInterval(59 * 60)
+        let stretched = try XCTUnwrap(PomodoroHistoryEditMath.preview(
+            previous: paused, startedAt: start, endedAt: longerEnd
+        ))
+        XCTAssertEqual(stretched.actual, paused.actualDuration * 2, accuracy: 0.01)
+        XCTAssertFalse(stretched.timesUnchanged)
+
+        let plain = focusRecord(title: "英语", start: start, end: end, actual: 59 * 60)
+        let plainStretched = try XCTUnwrap(PomodoroHistoryEditMath.preview(
+            previous: plain, startedAt: start, endedAt: longerEnd
+        ))
+        XCTAssertEqual(plainStretched.actual, longerEnd.timeIntervalSince(start), accuracy: 0.01)
+        XCTAssertNil(PomodoroHistoryEditMath.preview(
+            previous: plain, startedAt: end, endedAt: start
+        ))
+    }
+
+    func testTrailingWindowFollowsMidnightInsteadOfFrozenCustomDates() throws {
+        let morning = try beijingDate(year: 2026, month: 9, day: 24, hour: 0, minute: 30)
+        let window = FocusStats.trailingDayWindow(days: 30, containing: morning)
+        let expectedStart = try beijingDate(year: 2026, month: 8, day: 26)
+        let expectedEnd = try beijingDate(year: 2026, month: 9, day: 25)
+        XCTAssertEqual(window.start, expectedStart)
+        XCTAssertEqual(window.end, expectedEnd)
+    }
+
+    func testStopwatchOverlapCountsPortionThatFallsToday() throws {
+        let start = try beijingDate(year: 2026, month: 9, day: 23, hour: 23, minute: 30)
+        let end = try beijingDate(year: 2026, month: 9, day: 24, hour: 0, minute: 30)
+        var record = focusRecord(title: "数学", start: start, end: end)
+        record = PomodoroSessionRecord(
+            id: record.id,
+            phase: .focus,
+            taskTitle: record.taskTitle,
+            plannedDuration: record.plannedDuration,
+            actualDuration: record.actualDuration,
+            startedAt: record.startedAt,
+            endedAt: record.endedAt,
+            status: .stopwatch
+        )
+        let today = try beijingDate(year: 2026, month: 9, day: 24)
+        let next = try beijingDate(year: 2026, month: 9, day: 25)
+        let overlap = FocusStats.stopwatchOverlap(in: [record], from: today, to: next)
+        XCTAssertEqual(overlap.count, 1)
+        XCTAssertEqual(overlap.seconds, 30 * 60, accuracy: 0.01)
+    }
+
+    func testNextDayBoundaryRollsSavedTotalsOntoTheNewBeijingDay() throws {
+        let evening = try beijingDate(year: 2026, month: 9, day: 23, hour: 23, minute: 30)
+        let boundary = FocusStats.nextDayBoundary(after: evening)
+        XCTAssertEqual(boundary, try beijingDate(year: 2026, month: 9, day: 24))
+        XCTAssertEqual(
+            FocusStats.nextDayBoundary(after: boundary),
+            try beijingDate(year: 2026, month: 9, day: 25)
+        )
+        XCTAssertEqual(
+            FocusStats.nextDayBoundary(after: boundary.addingTimeInterval(0.4)),
+            try beijingDate(year: 2026, month: 9, day: 25)
+        )
+
+        let record = focusRecord(
+            title: "数学",
+            start: try beijingDate(year: 2026, month: 9, day: 23, hour: 21),
+            end: try beijingDate(year: 2026, month: 9, day: 23, hour: 22)
+        )
+        let yesterday = FocusStats.todayBounds(containing: evening)
+        let today = FocusStats.todayBounds(containing: boundary)
+        XCTAssertEqual(
+            FocusStats.totalSeconds(in: [record], from: yesterday.start, to: yesterday.end),
+            3600,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            FocusStats.totalSeconds(in: [record], from: today.start, to: today.end),
+            0,
+            accuracy: 0.01
+        )
+
+        let sundayNight = try beijingDate(year: 2026, month: 8, day: 23, hour: 23, minute: 30)
+        let monday = FocusStats.nextDayBoundary(after: sundayNight)
+        let sundayRecord = focusRecord(
+            title: "英语",
+            start: try beijingDate(year: 2026, month: 8, day: 23, hour: 10),
+            end: try beijingDate(year: 2026, month: 8, day: 23, hour: 11)
+        )
+        let before = FocusStats.weekPace(in: [sundayRecord], goalMinutes: 3000, at: sundayNight)
+        let after = FocusStats.weekPace(in: [sundayRecord], goalMinutes: 3000, at: monday)
+        XCTAssertEqual(before.savedSeconds, 3600, accuracy: 0.01)
+        XCTAssertEqual(after.savedSeconds, 0, accuracy: 0.01)
+    }
+
+    func testDisplayInstantIgnoresAFutureScheduleEntry() throws {
+        let clock = try beijingDate(year: 2026, month: 9, day: 23, hour: 23, minute: 30)
+        let future = try beijingDate(year: 2026, month: 9, day: 24)
+        let shown = FocusStats.displayInstant(
+            scheduleDate: future,
+            anchor: Date.distantPast,
+            clock: clock
+        )
+        XCTAssertEqual(shown, clock)
+
+        let earlyClock = future.addingTimeInterval(-0.4)
+        let rolled = FocusStats.displayInstant(
+            scheduleDate: future,
+            anchor: Date.distantPast,
+            clock: earlyClock
+        )
+        XCTAssertEqual(rolled, future)
+    }
+
+    func testBeijingDayScheduleStartsAtTheRequestThenHitsMidnight() throws {
+        let now = try beijingDate(year: 2026, month: 9, day: 23, hour: 23, minute: 30)
+        let entries = Array(BeijingDaySchedule().entries(from: now, mode: .normal).prefix(3))
+        XCTAssertEqual(entries, [
+            now,
+            try beijingDate(year: 2026, month: 9, day: 24),
+            try beijingDate(year: 2026, month: 9, day: 25)
+        ])
+
+        let midnight = try beijingDate(year: 2026, month: 9, day: 24)
+        let fromMidnight = Array(BeijingDaySchedule().entries(from: midnight, mode: .lowFrequency).prefix(2))
+        XCTAssertEqual(fromMidnight[0], midnight)
+        XCTAssertEqual(fromMidnight[1], try beijingDate(year: 2026, month: 9, day: 25))
+    }
+
+    func testTimelineBlockIdentitySeparatesRecordsWithTheSameStart() throws {
+        let day = try beijingDate(year: 2026, month: 9, day: 23, hour: 9)
+        let one = UUID()
+        let two = UUID()
+        let left = TimelineBlockIdentity.make(recordIDs: [one], day: day, startHour: 9, live: false)
+        let right = TimelineBlockIdentity.make(recordIDs: [two], day: day, startHour: 9, live: false)
+        XCTAssertNotEqual(left, right)
+        XCTAssertEqual(
+            TimelineBlockIdentity.make(recordIDs: [one], day: day, startHour: 9, live: false),
+            left
+        )
+    }
+}

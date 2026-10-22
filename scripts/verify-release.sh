@@ -90,7 +90,7 @@ assert_plist_value "$APP_PRIVACY" "NSPrivacyTracking" "false"
 assert_plist_value "$WIDGET_PRIVACY" "NSPrivacyTracking" "false"
 
 assert_plist_value "$APP_PATH/Contents/Info.plist" "CFBundleShortVersionString" "2.3.0"
-assert_plist_value "$APP_PATH/Contents/Info.plist" "CFBundleVersion" "53"
+assert_plist_value "$APP_PATH/Contents/Info.plist" "CFBundleVersion" "59"
 assert_plist_value \
     "$APPEX_PATH/Contents/Info.plist" \
     "NSExtension:NSExtensionPointIdentifier" \

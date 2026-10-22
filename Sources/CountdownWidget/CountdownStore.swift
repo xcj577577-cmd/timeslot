@@ -809,12 +809,10 @@ final class CountdownStore: ObservableObject {
     }
 
     func resetStopwatch() {
-        let now = Date()
+        // 重置只清状态，不写历史。和确认文案一致。
         if pomodoro.isRunning {
-            recordCurrentPomodoro(status: .interrupted, at: now)
             pomodoro = clearCountdownState()
         }
-        recordStopwatch(status: .interrupted, at: now)
         var updated = pomodoro
         updated.stopwatchRunning = false
         updated.stopwatchActiveStartedAt = nil
@@ -825,12 +823,9 @@ final class CountdownStore: ObservableObject {
     }
 
     func resetPomodoro() {
-        let now = Date()
         if pomodoro.isStopwatchActive {
-            recordStopwatch(status: .interrupted, at: now)
             pomodoro = clearStopwatchState()
         }
-        recordCurrentPomodoro(status: .interrupted, at: now)
         var updated = pomodoro
         updated.isRunning = false
         updated.endDate = nil
@@ -965,30 +960,23 @@ final class CountdownStore: ObservableObject {
         )
     }
 
-    /// 修正一条历史记录的起止时间与任务名，实际时长按新的墙钟重新计算。
-    /// 用于补救「忘了停止计时」导致的异常长/短记录。
+    /// 修正一条历史记录的起止时间与任务名。时长规则与修正弹窗预览相同。
     func updatePomodoroHistoryRecord(id: UUID, startedAt: Date, endedAt: Date, taskTitle: String) {
         guard let index = pomodoroHistory.firstIndex(where: { $0.id == id }) else { return }
-        let end = max(startedAt, endedAt)
-        let wall = end.timeIntervalSince(startedAt)
-        guard wall > 0 else { return }
         let previous = pomodoroHistory[index]
-        let previousWall = previous.endedAt.timeIntervalSince(previous.startedAt)
-        let newActual: TimeInterval
-        if previousWall > 0, previous.actualDuration <= previousWall {
-            // 原记录含暂停（实际用时小于墙钟），按比例缩放保持语义
-            newActual = previous.actualDuration * (wall / previousWall)
-        } else {
-            newActual = wall
-        }
+        guard let edited = PomodoroHistoryEditMath.preview(
+            previous: previous,
+            startedAt: startedAt,
+            endedAt: endedAt
+        ) else { return }
         pomodoroHistory[index] = PomodoroSessionRecord(
             id: previous.id,
             phase: previous.phase,
             taskTitle: PomodoroTaskPalette.normalized(taskTitle),
             plannedDuration: previous.plannedDuration,
-            actualDuration: newActual,
-            startedAt: startedAt,
-            endedAt: end,
+            actualDuration: edited.actual,
+            startedAt: edited.startedAt,
+            endedAt: edited.endedAt,
             status: previous.status
         )
     }
